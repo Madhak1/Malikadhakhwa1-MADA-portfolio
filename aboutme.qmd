@@ -2,7 +2,7 @@
 title: "About me"
 ---
 
-![](Pictures/20231201_160032.jpg){width="280"}
+![](images/IMG-20231201-WA0050.jpg){width="173"}
 
 I completed my PhD in Financial Planning, Housing, and Consumer Economics with a concentration in Consumer Economics from the University of Georgia this summer. My research interest is in the understanding of the impact of chronic illness on household dynamics. My dissertation explored the spillover effect of parental chronic illness on childrens' academic achievements.
 
