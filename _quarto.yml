@@ -20,7 +20,7 @@ website:
             file: tidytuesday-exercise/tidytuesday-exercise.qmd
     right:
       - icon: github 
-        href: URL-TO-THIS-REPOSITORY-HERE        
+        href: https://github.com/Madhak1/Malikadhakhwa1-MADA-portfolio        
 
 format:
   html:
