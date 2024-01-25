@@ -111,7 +111,7 @@ summary(africa_pop_life)
 
 Plotting life expectancy against infant mortality in 'africa_infant_life' displays an expected negative correlation.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #Plotting expectancy as a function of infant mortality
 p1 <- africa_infant_life %>% ggplot(aes(x=infant_mortality, y=life_expectancy)) + geom_point() + geom_smooth(method='lm')
 plot(p1)
@@ -120,7 +120,7 @@ plot(p1)
 
 Plotting life expectancy against the log of population in 'africa_pop_life' reveals intriguing streaks. This pattern exists because africadata contains multiple years of data on population and life expectancy for multiple countries in Africa. Each 'streak' might be hinting at a positive correlation between life expectancy and population within individual country over multiple years.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #Plotting life expectancy as a function of log of population for the africa_pop_life
 p2 <- africa_pop_life %>% ggplot(aes(x=log(population), y=life_expectancy)) + geom_point() + geom_smooth(method='lm')
 plot(p2)
@@ -165,7 +165,7 @@ summary(africadata_2000)
 
 Plotting life_expectancy as a function of infant_mortality for 'africadata_2000' again revealed a negative correlation between infant mortality and life expectancy.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #Plotting life expectancy as a function of infant mortality for the africadata_2000.
 
 p3 <- africadata_2000 %>% ggplot(aes(x=infant_mortality, y=life_expectancy)) + geom_point() + geom_smooth(method='lm')
@@ -175,7 +175,7 @@ plot(p3)
 
 Likewise, plotting life_expectancy as a function of log of population for 'africadata_2000' still produces streaks following the pattern of the aficadata plot.
 
-```{r}
+```{r message=FALSE, warning=FALSE}
 #Plotting life expectancy as a function of log of population for the africadata_2000
 
 p4 <- africadata_2000 %>% ggplot(aes(x=log(population), y=life_expectancy)) + geom_point() + geom_smooth(method='lm')
