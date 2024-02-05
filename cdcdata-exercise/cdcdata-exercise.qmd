@@ -8,12 +8,10 @@ For this exercise, I have used the Sample Adult Interview data from the 2022 Nat
 
 ```{r}
 #Required packages are loaded
-library(tidyverse)
-library(here)
-library(parsnip)
-library(broom)
-library(plm)
-library(readr)
+library(dplyr)   #for data processing/cleaning
+library(tidyr)   #for data processing / cleaning
+library(here)    # for nice visualization of data
+library(skimr)  # for nice visualization of data
 
 ```
 I set a random seed for reproducibility purpose.I assumed the sample size of the undergraduate students not having prior personal finance education to be 1000.
@@ -23,27 +21,74 @@ I set a random seed for reproducibility purpose.I assumed the sample size of the
 data_location <- here::here("cdcdata-exercise","adult22.csv")
 
 #load data. 
-data_adult <- read.csv(data_location)
-
-#check the no. of rows
-nrow(data_adult)
-
-#check the no. of columns
-ncol(data_adult)
-
-#checking data
-str(data_adult)
-
-
+rawdata_adult <- read.csv(data_location)
 ```
 
+Chec the data
 
 ```{r}
-head(data_adult)
-```
-
-
-```{r}
+#Check the no. of rows
+nrow(rawdata_adult)
+#Check the no. of columns
+ncol(rawdata_adult)
+#Check the head
+head(rawdata_adult)
+#Check the tail
 tail(data_adult)
 ```
+
+Alternative way of looking at the data
+
+```{r}
+dplyr::glimpse(rawdata_adult)
+summary(rawdata_adult)
+head(rawdata_adult)
+skimr::skim(rawdata_adult)
+```
+
+Cleaning
+This data has 633 variables, we will be using only 11 variables for the exploratory analysis. So, I created a subset of the data containing only those 11 variables. 
+
+CleanStep1_adult is a subset of rawdata_adult including onlyt the variable of interest
+```{r}
+CleanStep1_adult <- rawdata_adult[,c("SEX_A", "AGEP_A", "RACEALLP_A", "INCWRKO_A", "HICOV_A", "LUNGCAN_A", "LUNGAGETC_A", "CIGNOW_A",    "DRKAVG12M_A", "PAYBLL12M_A")]
+
+```
+
+Check data
+
+```{r}
+dplyr::glimpse(CleanStep1_adult)
+summary(CleanStep1_adult)
+head(CleanStep1_adult)
+skimr::skim(CleanStep1_adult)
+
+```
+I have re-coded all of the variables of interest in the new data file as below to create an ease to understand what each represents. 
+
+SEX_A->Sex, AGEP_A->Age, RACEALLP_A->Race, INCWRKO_A->Inc_Wage, HICOV_A->H_Insurance, LUNGCAN_A->Lung_cancer, LUNGAGETC_A->Age_Lung_cancer
+CIGNOW_A->Cigarettes_No., DRKAVG12M_A->Alcohol_No., PAYBLL12M_A->Prob_MedBills.
+
+Also, all of the variables are coded as integer in the data. I have changed the categorical variables to factor.
+
+I have also deleted the in-definitive responses such as Refused, Not Ascertained, Don't Know for all the variables. Those are given respectively the values of 7,8 or 9 for Sex, Race, Wage Income, Health Insurance, indicators of Lung Cancer and Problems Paying Medical Bills. And for the integer variables, it is 97, 98 and 99.
+```{r}
+CleanStep2_adult <- CleanStep1_adult %>%
+  mutate(
+    Sex = factor(SEX_A),
+    Race = factor(RACEALLP_A),
+    H_Insurance = factor(HICOV_A),
+    Lung_cancer = factor(LUNGCAN_A),
+    Prob_MedBills = factor(PAYBLL12M_A)
+   )%.%
+  select()
+
+```
+
+
+
+
+
+
+
 
