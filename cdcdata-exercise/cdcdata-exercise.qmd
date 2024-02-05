@@ -1,0 +1,49 @@
+---
+title: "CDC-Data Exercise"
+---
+
+For this exercise, I have used the Sample Adult Interview data from the 2022 National Health Interview Survey (NHIS). The NHIS is a key source of information on the health trends of civilians in the United States since 1957. It helps identifying the population segments who are at a higher risk of facing health issues. Conducted by the National Center for Health Statistics (NCHS), which is a part of Centers for Disease Control and Prevention (CDC), NHIS is the oldest household health survey in the United States. U.S. Census Bureau was responsible for gathering the data. This data can be found at https://www.cdc.gov/nchs/nhis/2022nhis.htm 
+
+ 
+
+```{r}
+#Required packages are loaded
+library(tidyverse)
+library(here)
+library(parsnip)
+library(broom)
+library(plm)
+library(readr)
+
+```
+I set a random seed for reproducibility purpose.I assumed the sample size of the undergraduate students not having prior personal finance education to be 1000.
+
+```{r}
+# path to data
+data_location <- here::here("cdcdata-exercise","adult22.csv")
+
+#load data. 
+data_adult <- read.csv(data_location)
+
+#check the no. of rows
+nrow(data_adult)
+
+#check the no. of columns
+ncol(data_adult)
+
+#checking data
+str(data_adult)
+
+
+```
+
+
+```{r}
+head(data_adult)
+```
+
+
+```{r}
+tail(data_adult)
+```
+
