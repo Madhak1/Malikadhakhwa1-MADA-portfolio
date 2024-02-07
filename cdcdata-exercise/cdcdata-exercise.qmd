@@ -2,29 +2,31 @@
 title: "CDC-Data Exercise"
 ---
 
-For this exercise, I have used the Sample Adult Interview data from the 2022 National Health Interview Survey (NHIS). The NHIS is a key source of information on the health trends of civilians in the United States since 1957. It helps identifying the population segments who are at a higher risk of facing health issues. Conducted by the National Center for Health Statistics (NCHS), which is a part of Centers for Disease Control and Prevention (CDC), NHIS is the oldest household health survey in the United States. U.S. Census Bureau was responsible for gathering the data. This data can be found at https://www.cdc.gov/nchs/nhis/2022nhis.htm 
+For this exercise, I am analyzing the relation between lung cancer and smoking and alcohol consumption on different demographics in the US by using the Sample Adult Interview data from the 2022 National Health Interview Survey (NHIS). The NHIS is a key source of information on the health trends of civilians in the United States since 1957. It helps identifying the population segments who are at a higher risk of facing health issues. Conducted by the National Center for Health Statistics (NCHS), which is a part of Centers for Disease Control and Prevention (CDC), NHIS is the oldest household health survey in the United States. U.S. Census Bureau was responsible for gathering the data. This data can be found at https://www.cdc.gov/nchs/nhis/2022nhis.htm 
 
- 
+This data has 637 variables and 27651 observations. The variables I am using for the exploratory analyses are lung cancer indicator, age when first diagnosed with lung cancer, number of cigarettes smoked on a day, average number of alcohol drinks on days drank and the gender, age and race of the sample adults. 
 
 ```{r}
 #Required packages are loaded
 library(dplyr)   #for data processing/cleaning
 library(tidyr)   #for data processing / cleaning
-library(here)    # for nice visualization of data
-library(skimr)  # for nice visualization of data
+library(ggplot2) #for nice visualization of data
+library(here)    #for easy file referencing
+library(skimr)   #for data summary
+library(purrr)   #for printing summary table
 
 ```
-I set a random seed for reproducibility purpose.I assumed the sample size of the undergraduate students not having prior personal finance education to be 1000.
 
+I referenced the data using the "here" function.
 ```{r}
 # path to data
 data_location <- here::here("cdcdata-exercise","adult22.csv")
 
-#load data. 
+#load data 
 rawdata_adult <- read.csv(data_location)
 ```
 
-Chec the data
+I inspected the data by verifying the numbers of rows, looking at a few observations on the top and on the tail-end. The results showed this data has 27651 rows and 637 columns which are in line with the information on the code book.  
 
 ```{r}
 #Check the no. of rows
@@ -34,60 +36,325 @@ ncol(rawdata_adult)
 #Check the head
 head(rawdata_adult)
 #Check the tail
-tail(data_adult)
+tail(rawdata_adult)
 ```
 
-Alternative way of looking at the data
+As I am using only 7 variables for the exploratory analysis, I created a subset of the data containing of only those variables which are Sex, Age, Race, Lung Cancer indicator, Age first diagnosed with lung cancer, Number of Cigarettes smoked on a day and Average no. of Alcohol drinks on days drank. These variables as coded as "SEX_A", "AGEP_A", "RACEALLP_A", "LUNGCAN_A", "LUNGAGETC_A", "CIGNOW_A" and "DRKAVG12M_A" respectively in the codebook.
 
 ```{r}
-dplyr::glimpse(rawdata_adult)
-summary(rawdata_adult)
-head(rawdata_adult)
-skimr::skim(rawdata_adult)
-```
-
-Cleaning
-This data has 633 variables, we will be using only 11 variables for the exploratory analysis. So, I created a subset of the data containing only those 11 variables. 
-
-CleanStep1_adult is a subset of rawdata_adult including onlyt the variable of interest
-```{r}
-CleanStep1_adult <- rawdata_adult[,c("SEX_A", "AGEP_A", "RACEALLP_A", "INCWRKO_A", "HICOV_A", "LUNGCAN_A", "LUNGAGETC_A", "CIGNOW_A",    "DRKAVG12M_A", "PAYBLL12M_A")]
+CleanStep1_adult <- rawdata_adult[,c("SEX_A", "AGEP_A", "RACEALLP_A", "LUNGCAN_A", "LUNGAGETC_A", "CIGNOW_A", "DRKAVG12M_A")]
 
 ```
 
-Check data
+I re-inspected the newly created data set and found that most of the observations are missing on the lung cancer indicator, age when first diagnosed with lung cancer and Number of Cigarettes smoked on a day. These missing values are probably indicating that most of the adults in the sample do not smoke and are not diagnosed with lung cancer.   
 
 ```{r}
+#Checking the new subset of data
 dplyr::glimpse(CleanStep1_adult)
 summary(CleanStep1_adult)
 head(CleanStep1_adult)
 skimr::skim(CleanStep1_adult)
 
 ```
-I have re-coded all of the variables of interest in the new data file as below to create an ease to understand what each represents. 
 
-SEX_A->Sex, AGEP_A->Age, RACEALLP_A->Race, INCWRKO_A->Inc_Wage, HICOV_A->H_Insurance, LUNGCAN_A->Lung_cancer, LUNGAGETC_A->Age_Lung_cancer
-CIGNOW_A->Cigarettes_No., DRKAVG12M_A->Alcohol_No., PAYBLL12M_A->Prob_MedBills.
+The data has some of the responses categorized as 'Refused', 'Not Ascertained' and 'Don't Know' for all of the variables. The values of 'Refused' are 7 and 97 respectively for categorical and numerical variables. Similar values for 'Not Ascertained' are 8 and 98 and for 'Don't Know' are 9 and 99 respectively. I have coded the responses 'Refused', 'Not Ascertained', 'Don't Know' as missing (NA) for for all the variables in the data subset. 
 
-Also, all of the variables are coded as integer in the data. I have changed the categorical variables to factor.
+Further, I have re-coded the values of the categorical variables as below following the code book:
 
-I have also deleted the in-definitive responses such as Refused, Not Ascertained, Don't Know for all the variables. Those are given respectively the values of 7,8 or 9 for Sex, Race, Wage Income, Health Insurance, indicators of Lung Cancer and Problems Paying Medical Bills. And for the integer variables, it is 97, 98 and 99.
+SEX_A:  'Male' for '1' and 'Female' for '2'.
+RACEALLP_A: 'White' for '1', 'Black' for '2', 'Asian' for '3' 'AIAN' for '4' and 'Other' for the rest following the code book.
+LUNGCAN_A: 'Lung_Cancer' for '1' and 'No_Lung_Cancer' for '2'.
+
 ```{r}
-CleanStep2_adult <- CleanStep1_adult %>%
+
+FinalData_adult <- CleanStep1_adult %>%
+   # Re-coding 7, 8, 9 to NA for the categorical variables
+  mutate(across(c(SEX_A, RACEALLP_A, LUNGCAN_A),
+                ~ na_if(.x, 7) %>% na_if(8) %>% na_if(9)))%>%
+# Re-coding 97, 98, 99 to NA for the integer variables
+  mutate(across(c(AGEP_A, LUNGAGETC_A, CIGNOW_A, DRKAVG12M_A),
+                ~ na_if(.x, 97) %>% na_if(98) %>% na_if(99)))%>%
+  
+ mutate(
+    # Re-coding Sex as factor for clarity
+    SEX_A = factor(if_else(SEX_A == 1, 'Male', 'Female')),
+    
+    # Re-coding Race as factor with more descriptive labels
+    RACEALLP_A = factor(case_when(
+      RACEALLP_A == 1 ~ "White",
+      RACEALLP_A == 2 ~ "Black",
+      RACEALLP_A == 3 ~ "Asian",
+      RACEALLP_A == 4 ~ "AIAN",
+      TRUE ~ "Other"  # for all other races including 'Mixed Races' 
+    )),
+    
+    # Re-coding Lung Cancer as factor 
+    LUNGCAN_A = factor(case_when(
+      LUNGCAN_A == 1 ~ "Lung Cancer",
+      LUNGCAN_A == 2 ~ "No Lung Cancer",
+      TRUE ~ as.character(LUNGCAN_A)  # Just in case there are unexpected values
+    ))
+ )
+   
+```
+
+
+To understand what each variable represents at a glance, I re-coded all of the variables in the new data file as shown below. 
+
+```{r}
+
+FinalData_adult <- FinalData_adult %>%
   mutate(
-    Sex = factor(SEX_A),
-    Race = factor(RACEALLP_A),
-    H_Insurance = factor(HICOV_A),
-    Lung_cancer = factor(LUNGCAN_A),
-    Prob_MedBills = factor(PAYBLL12M_A)
-   )%.%
-  select()
+    Sex = SEX_A,
+    Race = RACEALLP_A,
+    Lung_cancer=LUNGCAN_A,
+    Age=AGEP_A,
+    Age_Lung_cancer=LUNGAGETC_A,
+    Cigarettes_No=CIGNOW_A,
+    Alcohol_No=DRKAVG12M_A,
+    
+   )%>%
+  select(-SEX_A, -RACEALLP_A, -LUNGCAN_A, -AGEP_A, -LUNGAGETC_A, -CIGNOW_A, - DRKAVG12M_A )#deleting the old columns
+
+```
+
+I re-ordered the categories of the Race variable so as to view the most prevailing at the top.
+```{r}
+FinalData_adult$Race <- factor(FinalData_adult$Race, 
+                                levels = c("White", "Black", "Asian", "AIAN", "Other"))
 
 ```
 
 
+Re-checking the data.
+
+```{r}
+dplyr::glimpse(FinalData_adult)
+summary(FinalData_adult)
+head(FinalData_adult)
+skimr::skim(FinalData_adult)
+
+```
+
+I created separate summary tables for all the categorical variables including number and percentages of each category. The percentages match with that provided in the code book. 
+
+```{r}
+
+categorical_vars <- c("Sex", "Race", "Lung_cancer")
+
+# Creating function to calculate frequencies and percentages for a categorical variable
+summarize_categorical <- function(data, var_name) {
+  data %>%
+    mutate(!!var_name := factor(!!sym(var_name))) %>%  # Convert to factor for accurate summarization
+    count(!!sym(var_name)) %>%
+    mutate(Percentage = n / sum(n) * 100) %>%
+    rename(Category = !!sym(var_name)) %>%
+    select(Category, n, Percentage)
+}
+
+# Applying the function to each categorical variable
+summary_list <- map(categorical_vars, ~summarize_categorical(FinalData_adult, .x))
+
+# Naming the list elements with the variable names for easy access
+names(summary_list) <- categorical_vars
+
+# View summary_list containing summaries of each categorical variable
+walk(names(summary_list), ~{
+  cat("\nSummary for:", .x, "\n")
+  print(summary_list[[.x]])
+})
+
+```
+
+I created summary tables for the numeric variables. The frequency, minimum and maximum values match with that in the code book.
+
+```{r}
+
+numeric_vars <- c("Age", "Age_Lung_cancer", "Cigarettes_No", "Alcohol_No")
+
+# Function to produce a summary for a single numeric variable
+produce_summary <- function(data, var) {
+  summary <- data %>%
+    summarise(
+      N = sum(!is.na(!!sym(var))),  # Calculate number of non-NA observations
+      Mean = mean(!!sym(var), na.rm = TRUE), # Calculate mean of non-NA observations
+      SD = sd(!!sym(var), na.rm = TRUE),     # Calculate standard deviation of non-NA observations
+      Min = min(!!sym(var), na.rm = TRUE),   # Minimum value of non-NA observations
+      Max = max(!!sym(var), na.rm = TRUE)    # Maximum value of non-NA observations 
+    ) %>%
+    tibble::add_column(Variable = var, .before = 1) # Display Variable as the first column on the table
+  
+  # Return the summary
+  return(summary)
+}
+
+# Iterate over the numeric_vars list, producing and printing a summary for each variable
+for (var in numeric_vars) {
+  print(produce_summary(FinalData_adult, var))
+}
+
+```
+I created Bar chart for the categorical variables.
+
+```{r}
+
+# Plot for "Sex", excluding missing values
+FinalData_adult %>%
+  filter(!is.na(Sex)) %>%     #excludes missing values
+  ggplot(aes(x = Sex, fill = Sex)) +
+    geom_bar() +
+    scale_fill_manual(values = c("Male" = "lightblue", "Female" = "green")) +
+    labs(title = "Distribution of Sex", x = "Sex", y = "Count")+
+     theme_minimal() +
+      theme(plot.title = element_text(hjust = 0.5)) # Centers the title
+
+# Plot for "Race", excluding missing values
+FinalData_adult %>%
+  filter(!is.na(Race)) %>%
+  ggplot(aes(x = factor(Race, levels = c("White", "Black", "Asian", "AIAN", "Other")), fill = Race)) +
+    geom_bar() +
+    scale_fill_manual(values = c("White" = "blue", "Black" = "red", "Asian" = "green", "AIAN" = "orange", "Other" = "purple")) +
+    labs(title = "Distribution of Race", x = "Race", y = "Count") +
+    theme_minimal()+
+      theme(plot.title = element_text(hjust = 0.5)) # Centers the title
+
+# Plot for "Lung_cancer", excluding missing values
+FinalData_adult %>%     #excludes missing values
+  filter(!is.na(Lung_cancer)) %>%
+  ggplot(aes(x = Lung_cancer, fill = Lung_cancer)) +
+    geom_bar() +
+    scale_fill_manual(values = c("Lung Cancer" = "red", "No Lung Cancer" = "green")) +
+    labs(title = "Distribution of Lung Cancer", x = "Lung Cancer Status", y = "Count")+
+      theme(plot.title = element_text(hjust = 0.5)) # Centers the title
+    
+
+```
+
+I created histogram for the numeric variables. The age histogram shows a spike at the end of the chart. As per the codebook, ages of 85 and above are grouped together and there are 1002 sample adults within this age range.
+
+```{r}
+# Listing numeric variables
+numeric_vars <- c("Age", "Age_Lung_cancer", "Cigarettes_No", "Alcohol_No")
+
+# Creating a function to generate a histogram for a given variable, excluding Missing Values
+generate_histogram <- function(variable_name) {
+  FinalData_adult %>%
+    drop_na(!!sym(variable_name)) %>%
+    ggplot(aes(x = !!sym(variable_name))) +
+      geom_histogram(binwidth = 1, color = "black", fill = "lightblue") + 
+      labs(title = paste("Histogram of", variable_name), x = variable_name, y = "Count") +
+      theme_minimal()+
+      theme(plot.title = element_text(hjust = 0.5)) # Centers the title
+  
+}
+
+# Applying the function to each numeric variable
+lapply(numeric_vars, generate_histogram)
 
 
+```
+
+I created bar chart to visualize prevalence of lung cancer by sex. It appears that the proportion of adults with lung cancer is similar within Males and Females. 
+```{r}
+
+# Filtering out observations with missing values in Lung_cancer or Sex
+FinalData_adult_filtered <- FinalData_adult %>%
+  filter(!is.na(Lung_cancer) & !is.na(Sex))
+
+# Create the plot
+ggplot(FinalData_adult_filtered, aes(x = Sex, fill = Lung_cancer)) +
+  geom_bar(position = "fill") +  # "fill" shows proportions within each sex group
+  scale_fill_manual(values = c("Lung Cancer" = "red", "No Lung Cancer" = "lightgreen")) +
+  scale_y_continuous(labels = scales::percent_format()) +  # Converts the y-axis to percentage
+  labs(title = "Lung Cancer Status by Sex",
+       x = "Sex",
+       y = "Percentage",
+       fill = "Lung Cancer Status") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) #Centers the title
+
+```
+I created bar chart to visualize prevalence of lung cancer by race. It appears lung cancer is common in Asians compared to other races.  
+
+```{r}
+# Filter out rows with NA in Lung_cancer or Race
+FinalData_adult_filtered <- FinalData_adult %>%
+  filter(!is.na(Lung_cancer) & !is.na(Race))
+
+# Create the plot
+ggplot(FinalData_adult_filtered, aes(x = Race, fill = Lung_cancer)) +
+  geom_bar(position = "fill") +  # Use "fill" to show proportions within each race group
+  scale_y_continuous(labels = scales::percent_format()) +  # Convert the y-axis to percentage
+  scale_fill_manual(values = c("Lung Cancer" = "red", "No Lung Cancer" = "lightgreen")) +
+  labs(title = "Lung Cancer Status by Race",
+       x = "Race",
+       y = "Percentage",
+       fill = "Lung Cancer Status") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+
+```
+I created a box plot chart to view the distribution of no. of cigarettes smoked in a day by lung cancer status of the sample adults. The median no. of cigarettes smoked by the lung cancer group is higher than the that by the group without lung cancer. 
+
+```{r}
+# Filtering out observations with missing values of Lung_cancer or Cigarettes_No
+FinalData_adult_filtered <- FinalData_adult %>%
+  filter(!is.na(Lung_cancer) & !is.na(Cigarettes_No))
+
+# Creating boxplot
+ggplot(FinalData_adult_filtered, aes(x = Lung_cancer, y = Cigarettes_No, fill = Lung_cancer)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Lung Cancer" = "red", "No Lung Cancer" = "green")) +
+  labs(title = "Number of Cigarettes Smoked by Lung Cancer Status",
+       x = "Lung Cancer Status",
+       y = "Number of Cigarettes") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5)) #Centers the title
+
+```
+
+I created a box plot chart to visualize distribution of age of sample adults when they were diagnosed with lung cancer. The median age is approximately at 65 years. 
+
+```{r}
+
+# Filtering to include only individuals with lung cancer to show age at diagnosis
+FinalData_adult_filtered <- FinalData_adult %>%
+  filter(Lung_cancer == "Lung Cancer" & !is.na(Age_Lung_cancer))
+
+# Creating the boxplot
+ggplot(FinalData_adult_filtered, aes(x = Lung_cancer, y = Age_Lung_cancer, fill = Lung_cancer)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Lung Cancer" = "red")) +
+  labs(title = "Age at Lung Cancer Diagnosis",
+       x = "Lung Cancer Status",
+       y = "Age at Diagnosis") +
+  theme_minimal() +
+  theme(legend.position = "none")+
+  theme(plot.title = element_text(hjust = 0.5)) #Centers the title
+
+```
+
+I created a box plot chart to view the distribution of alcohol and cigarette consumption by sex. The median of cigarette consumption is higher for the males compared to females. 
+
+```{r}
+# Reshaping the data to long format
+FinalData_adult_long <- FinalData_adult %>%
+  select(Sex, Alcohol_No, Cigarettes_No) %>%
+  pivot_longer(cols = c(Alcohol_No, Cigarettes_No), names_to = "Substance", values_to = "Amount") %>%
+  filter(!is.na(Sex), !is.na(Amount))  # Excluding Missing Values
+
+# Create the boxplot
+ggplot(FinalData_adult_long, aes(x = Sex, y = Amount, fill = Substance)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Alcohol_No" = "blue", "Cigarettes_No" = "red")) +
+  labs(title = "Distribution of Alcohol and Cigarettes consumption by Sex",
+       x = "Sex",
+       y = "Number",
+       fill = "Substance") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5)) #Centers the title
+
+```
 
 
 
