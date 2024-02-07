@@ -1,0 +1,232 @@
+---
+title: "Data Exercise"
+---
+
+This exercise explores the effectiveness of a personal finance course on the saving habits of undergraduate students at a hypothetical university. At the beginning of the first semester, freshmen are surveyed about their current savings and prior exposure to personal finance education. They are offered optional personal finance class during either semester of their freshman year. At the start of the second year, the students are surveyed again on their savings.The purpose of the study is to find if the undergraduate students who enroll in the personal finance course show statistically significant differences in saving behavior compared to other undergraduate students.
+
+```{r}
+#Required packageages are loaded
+library(tidyverse)
+library(here)
+library(parsnip)
+library(broom)
+library(plm)
+
+```
+I set a random seed for reproducibility purpose.I assumed the sample size of the undergraduate students not having prior personal finance education to be 1000.
+
+```{r}
+# Set a seed for reproducibility
+set.seed(123)
+# Define the number of total students who have never attended a personal finance class or lecture before the start of the semester
+n <- 1000
+```
+
+I considered personal finance class completion as the key predictor variable and household income and age as additional predictors for the student savings in the second year. I generated synthetic data to model student's age and household income distributions, and their decision to attend the personal finance course. I assumed the household income of students follows a normal distribution with a mean of $50000 and a standard deviation of $10000.   
+
+```{r}
+# Generating the synthetic data
+data <- tibble(
+  #Variable 1: Unique ID for each student
+  student_id = 1:n,
+  #Variable 2: Age (numeric variable) which is normally distributed with a mean of 18, sd of 3 and a minimum of 17
+  age_year1 = pmax(17, round(rnorm(n, mean=18, sd=1))),
+    #variable 3: Household Income (Numerical variable) which is normally distributed with a mean of 50000 and sd of 10000
+  income_year1 = rnorm(n, mean = 50000, sd=10000),
+  #variable 4: Random assignment to personal finance class 
+  pFinance_class = sample(c('First Semester','Second Semester','No Class'), n, replace=TRUE),
+)
+#Print a first few lines of the data
+head(data)
+```
+
+To account for the impact of pre-existing saving behaviors, I included the savings at the beginning of Year 1 as a baseline measure in the model. For this analysis, I calculated the baseline savings as 0.5% of the annual household income plus $5 for each year of the student's age.  
+
+```{r}
+# Define a function to simulate personal savings at the beginning of Year 1
+Savings_Year1 <- function(age_year1, income_year1) {
+  #Calculation of the baseline personal saving of a student.The average savings amount is a sum of 0.5% of the household income and $5 for each year of the student's age
+  base_savings_Year1 = 0.005 * income_year1 + 5 * age_year1  
+}
+```
+
+I added the baseline savings to the simulated data.
+
+```{r}
+data <- data %>%
+  mutate(pSavings_year1 = round(mapply(Savings_Year1, age_year1, income_year1), 2))
+```
+
+Data summary
+```{r}
+summary(data)
+```
+
+I employed visualization to explore the distribution of age, household income and savings of the students in Year 1.
+
+```{r}
+# Create a plot to visualize the age distribution
+ggplot(data, aes(x = age_year1)) +
+  geom_histogram(binwidth = 1, fill="orange", color="black") +
+  theme_minimal() +
+  xlab("Age")+
+  ylab("frequency")+
+  ggtitle("Age Distribution")
+
+# Create a plot to visualize the age distribution
+ggplot(data, aes(x = income_year1)) +
+  geom_histogram(binwidth = 5000, fill="green", color="black") +
+  theme_minimal() +
+  xlab("Household Income")+
+  ylab("frequency")+
+  ggtitle("Household Income Distribution")
+
+# Create a plot to visualize the savings distribution
+ggplot(data, aes(x = pSavings_year1)) +
+  geom_histogram(binwidth = 25, fill="turquoise", color="black") +
+  theme_minimal() +
+  xlab("Savings")+
+  ylab("frequency")+
+  ggtitle("Savings Distribution")
+
+```
+I calculated the personal savings of students for Year 2 by considering their initial savings, change in household income in Year 2, a year increase in the student's age and whether they attended the personal finance class. I assumed the household income for Year 2 follows a normal distribution with a mean of $51000 and a standard deviation of $10500. My hypothesis is that attending personal finance course encourages to save more. Therefore, I modeled the additional savings from attending the class in the first semester with a normal distribution, setting the mean increase at $100 and the standard deviation at $50. For those attending in the second semester, the increase follows a normal distribution with a mean of $150 and a standard deviation of $60, reflecting a potentially greater impact due to the timing of the class. I did not attribute any increase in savings to students who opted out of the class. I adjusted the effects of incremental age and the change in household income using the similar magnitude of effect as the previous year. 
+
+```{r}
+# Function to simulate personal savings for Year 2
+Savings_Year2 <- function(pSavings_year1, income_change, class) {
+   base_savings_Year2 = pSavings_year1 + 0.005 * income_change + 5  # 5 is the effect of one year increase in age
+  
+   #Additional effect of attending a personal finance class in either of the semesters.
+   class_effect =ifelse(class=='Second Semester', rnorm(1,150,60),
+                    ifelse(class=='First Semester', rnorm(1,100,50),
+                              0))
+  #Calculation of final savings. 'max' function ensures the final savings is not -ve.
+  max(0, base_savings_Year2 + class_effect)
+}
+```
+
+
+I added the Year 2 components into the original dataset. 
+```{r}
+#Alternative
+data <- data %>%
+  mutate(
+    age_year2 = age_year1 +1,                             #Age increment by 1 year
+      income_year2 = rnorm(n, 51000, 10500),                #New household income distribution
+        income_change =  income_year2 - income_year1
+  ) 
+
+data <- data %>% 
+mutate( pSavings_year2 = round(mapply(Savings_Year2,pSavings_year1, income_change, pFinance_class),2))
+
+#Print the first few rows of the generated data
+head(data)
+```
+
+Print summary to check data structure
+```{r}
+summary(data)
+```
+I generated a box plot to visualize the effect of the personal finance class on student's savings. Additionally, I created a scatter plot to examine the relationship between household income and student's savings stratified by attendance of personal finance class. These plots illustrate the underlying pattern within our synthesized data.
+
+```{r}
+
+# Create box plot to visualize the effect of personal finance class on savings
+ggplot(data, aes(x = pFinance_class, y = pSavings_year2 , fill = pFinance_class)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("No Class" = "red",
+                               "First Semester" = "lightblue",
+                               "Second Semester"="lightgreen"))+
+  theme_minimal() +
+  labs(title = "Personal Savings post Finance Class",
+       x = "Finance Class Attendance",
+       y = "Personal Savings in Year 2")
+
+#Plot savings vs household income grouped by personal finance class
+ggplot(data, aes(x=income_year2, y=pSavings_year2, color=pFinance_class))+
+  geom_point() +
+  theme_minimal()+
+  labs(title = "Personal Savings vs. Income in Year 2",
+       x="Income in Year 2",
+       y="Personal Savings",
+       color = "Personal Finance Class")+
+  scale_color_manual(values=c("No Class"="red",
+                     "First Semester" = "blue",
+                     "Second Semester"="green"))
+
+```
+ 
+I saved the simulated data in a csv file. 
+
+```{r}
+#Save the simulated data to a CSV file
+write_csv(data, here("data.csv"))
+```
+
+I calculated students' average savings in the second year based on the personal finance class attended. 
+```{r}
+effect_analysis <- data %>%
+  group_by(pFinance_class) %>%
+  summarize(
+    avg_savings = mean(pSavings_year2),
+    sd_savings = sd(pSavings_year2)
+  )
+print(effect_analysis)
+```
+
+I fitted a linear model to the synthetic data to assess Year 2 savings, using enrollment of the personal finance class as the primary predictor, along with initial savings  and changes in household income. My aim is to determine whether the model accurately recover the parameters I used to generate the data.  
+
+```{r}
+#Fit linear model with not taking personal finance class as reference
+data$pFinance_class<-as.factor(data$pFinance_class)
+data$pFinance_class<-relevel(data$pFinance_class, ref = "No Class")
+model1<-linear_reg() %>%
+  set_engine("lm") %>%
+  parsnip::fit(pSavings_year2 ~ pFinance_class + pSavings_year1 + income_change, data=data)
+tidy(model1)
+
+```
+Summary of model's overall statistics
+```{r}
+glance(model1)
+```
+The estimates are statistically significant and closely align with the parameters set during the data generation process. Enrollment in  personal finance classes during the first and second semester led to an increase in  personal savings approximately by approximately 98 and 149, respectively. I set the amounts at 100 and 150 respectively in the simulation.
+
+I applied a fixed effect model to determine if it would yield consistent results with those observed from the initial analysis. I converted teh data to 'long format' to perform the fixed effect analysis.  
+
+```{r}
+# Create a time variable and reshape the data to a long format
+data_long <- data %>%
+  #Year 1 data
+  mutate(time=1, pFinance_class = "No Class") %>%
+  select(student_id, time, age=age_year1, income=income_year1, pSavings=pSavings_year1, pFinance_class = pFinance_class) %>%
+  #Year 2 data  
+  bind_rows(
+    data %>% 
+      mutate(time=2) %>%
+      select(student_id, time, age=age_year2, income= income_year2, pSavings=pSavings_year2, pFinance_class)
+  ) %>%
+    mutate(pFinance_class = as.factor(pFinance_class))
+  
+  #Check the structure
+  head(data_long)
+  
+```
+
+I applied fixed effect model to the long format of data.
+```{r}
+
+# First, convert the data frame to a pdata.frame, which is required for plm functions.
+data_panel <- pdata.frame(data_long, index = c("student_id", "time"))
+
+#Setting not attending personal finance class as the reference for the analysis
+data_panel$pFinance_class <- relevel(data_panel$pFinance_class, ref = "No Class")
+
+# Fit a fixed effects model
+fe_model <- plm(pSavings ~ pFinance_class + income + age + factor(time),
+                data = data_panel,
+                model = "within")
+summary(fe_model)
+```
+The fixed effect analysis produced results that reflected those from the initial model. 
