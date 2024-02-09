@@ -356,6 +356,243 @@ ggplot(FinalData_adult_long, aes(x = Sex, y = Amount, fill = Substance)) +
 
 ```
 
+<hr>
 
+# This section is contributed by Kelly Cao
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+## Producing Synthetic Data
+I first loaded my packages and used tbl_summary() function to have a clearer idea of what the cleaned data looked like. I then created a synthetic data frame with data.frame() function. I included all of the variables that were included in the previously shown clean data. For any categorical data, I applied the sample() function to each newly created variable, which randomly samples the vector of choice and apply it to the object. In the line of code, I included the vector category title, number of observations, probability associated with the vector, and the replacement function. This allowed me to create variables based on the real data distribution. I then used the same sample() function for the numerical columns, and sampled it from the real columns. I was unable to use rnorm() function as many of the variables still contained NA or missing values. When attempting to create a synthetic `Age` column, it was noted that the original distribution was not normal, so I proceeded with the sample() function.
+
+The following was performed using the MADA Course Content [Chapter 4b: Synthetic Data](https://andreashandel.github.io/MADAcourse/content/module-synthetic-data/synthetic-data-new-existing-r/synthetic-data-new-existing-r.html) as reference. 
+
+```{r}
+# Load required packages
+library(dplyr)
+library(purrr)
+library(lubridate)
+library(ggplot2)
+library(here)
+library(gtsummary)
+
+#Reviewing the summary of the Data
+tbl_summary(CleanStep1_adult, statistic = list(
+  all_continuous() ~ "{mean}/{median}/{min}/{max}/{sd}",
+  all_categorical() ~ "{n} / {N} ({p}%)"
+),)
+
+# Setting a seed for reproducibility
+set.seed(123)
+n_observation <- 27651
+
+#Creating the data frame for the synthetic data
+Synthetic_data <- data.frame(
+  Sex = character(n_observation), 
+  Race = character (n_observation), 
+  Lung_cancer = character (n_observation), 
+  Age = numeric(n_observation), 
+  Age_Lung_Cancer = numeric(n_observation), 
+  Cigarettes_No = numeric(n_observation), 
+  Alcohol_No = numeric(n_observation)
+)
+
+#I then proceed to use the sample() function to reference the previous data set and apply a synthesize data set to the newly created variables in "Synthetic_data" data frame.
+
+#Variable 1: Sex (Categorical)
+Synthetic_data$Sex <- sample(c("Male", "Female", "Refused", "Don't Know"),
+                              n_observation, replace = TRUE, 
+                              prob =as.numeric((table(CleanStep1_adult$SEX_A))))
+
+#Variable 2: Race (Categorical)
+Synthetic_data$Race <- sample(c("White", "Black", "Asian", "AIAN", "AIAN Mixed", "Other", "Refused", "Not Ascertained", "Don't Know"),
+                              n_observation, replace = TRUE, 
+                              prob =as.numeric((table(CleanStep1_adult$RACEALLP_A))))
+
+#Variable 3: Lung Cancer Status (Categorical)
+Synthetic_data$Lung_cancer <- sample(c("Lung Cancer", "No Cancer", "Refused", "Don't Know"),
+                              n_observation, replace = TRUE, 
+                              prob =as.numeric((table(CleanStep1_adult$LUNGCAN_A))))
+
+#As the following data sets contains a lot of NAs in it, I used the sample() function to replicate the data, even if they were normally distributed.
+
+#Variable 4: Age (Numeric)
+Synthetic_data$Age <- sample(CleanStep1_adult$AGEP_A, 
+                             size = n_observation,
+                             replace = TRUE)
+
+#Variable 5: Age when Receiving Lung Cancer (Numeric)
+Synthetic_data$Age_Lung_Cancer <-  sample(CleanStep1_adult$LUNGAGETC_A, 
+                                    size = n_observation, 
+                                    replace = TRUE)
+
+#Variable 6: Number of Cigarette use (Numeric)
+Synthetic_data$Cigarettes_No <- sample(CleanStep1_adult$CIGNOW_A, 
+                                    size = n_observation, 
+                                    replace = TRUE)
+
+#Variable 7: Number of Alcohol Use (Numeric)
+Synthetic_data$Alcohol_No <- sample(CleanStep1_adult$DRKAVG12M_A, 
+                                    size = n_observation, 
+                                    replace = TRUE)
+
+#I then check to see if the summary of this newly created data set is comparable to previous one.
+summary(Synthetic_data)
+tbl_summary(Synthetic_data, statistic = list(
+  all_continuous() ~ "{mean}/{median}/{min}/{max}/{sd}",
+  all_categorical() ~ "{n} / {N} ({p}%)"
+),)
+
+skim(Synthetic_data)
+```
+
+## Data Exploration/ Visuals
+The following tables and plots have been performed with the code provided above from Malika. I readjusted it a few times to match my newly acquired data set `Synthetic_data`.
+```{r}
+# Plot for "Sex", excluding missing values
+Synthetic_data %>%
+  filter(!is.na(Sex), Sex!="Don't Know") %>% #excludes missing values and "Don't Know"
+  ggplot(aes(x = Sex, fill = Sex)) +
+    geom_bar() +
+    scale_fill_manual(values = c("Male" = "lightblue", "Female" = "green")) +
+    labs(title = "Distribution of Sex", x = "Sex", y = "Count")+
+     theme_minimal() +
+      theme(plot.title = element_text(hjust = 0.5)) # Centers the title
+
+# Plot for "Race", excluding missing values
+Synthetic_data %>%
+  filter(!is.na(Race)) %>%
+  ggplot(aes(x = factor(Race, levels = c("White", "Black", "Asian", "AIAN", "Other")), fill = Race)) +
+    geom_bar() +
+    scale_fill_manual(values = c("White" = "blue", "Black" = "red", "Asian" = "green", "AIAN" = "orange", "Other" = "purple")) +
+    labs(title = "Distribution of Race", x = "Race", y = "Count") +
+    theme_minimal()+
+      theme(plot.title = element_text(hjust = 0.5)) # Centers the title
+
+# Plot for "Lung_cancer", excluding missing values
+Synthetic_data %>%     #excludes missing values
+  filter(!is.na(Lung_cancer)) %>%
+  ggplot(aes(x = Lung_cancer, fill = Lung_cancer)) +
+    geom_bar() +
+    scale_fill_manual(values = c("Lung Cancer" = "red", "No Cancer" = "green")) +
+    labs(title = "Distribution of Lung Cancer", x = "Lung Cancer Status", y = "Count")+
+      theme(plot.title = element_text(hjust = 0.5)) # Centers the title
+
+```
+
+```{r}
+# Listing numeric variables
+numeric_vars <- c("Age", "Age_Lung_Cancer", "Cigarettes_No", "Alcohol_No")
+
+# Creating a function to generate a histogram for a given variable, excluding Missing Values
+generate_histogram <- function(variable_name) {
+  Synthetic_data %>%
+    filter(!is.na(!!sym(variable_name))) %>%
+    ggplot(aes(x = !!sym(variable_name))) +
+      geom_histogram(binwidth = 1, color = "black", fill = "lightblue") + 
+      labs(title = paste("Histogram of", variable_name), x = variable_name, y = "Count") +
+      theme_minimal()+
+      theme(plot.title = element_text(hjust = 0.5)) # Centers the title
+}
+
+# Applying the function to each numeric variable
+plots <- lapply(numeric_vars, generate_histogram)
+plots
+
+```
+
+```{r}
+# Filtering out observations with missing values in Lung_cancer or Sex
+Synthetic_data_filtered <- Synthetic_data %>%
+  filter(!is.na(Lung_cancer) & !is.na(Sex), Sex!="Don't Know")
+
+# Create the plot
+ggplot(Synthetic_data_filtered, aes(x = Sex, fill = Lung_cancer)) +
+  geom_bar(position = "fill") +  # "fill" shows proportions within each sex group
+  scale_fill_manual(values = c("Lung Cancer" = "red", "No Cancer" = "lightgreen")) +
+  scale_y_continuous(labels = scales::percent_format()) +  # Converts the y-axis to percentage
+  labs(title = "Lung Cancer Status by Sex",
+       x = "Sex",
+       y = "Percentage",
+       fill = "Lung Cancer Status") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5)) #Centers the title
+```
+
+```{r}
+# Filter out rows with NA in Lung_cancer or Race
+Synthetic_data_filtered <- Synthetic_data %>%
+  filter(!is.na(Lung_cancer) & !is.na(Race))
+
+# Create the plot
+ggplot(Synthetic_data_filtered, aes(x = Race, fill = Lung_cancer)) +
+  geom_bar(position = "fill") +  # Use "fill" to show proportions within each race group
+  scale_y_continuous(labels = scales::percent_format()) +  # Convert the y-axis to percentage
+  scale_fill_manual(values = c("Lung Cancer" = "red", "No Cancer" = "lightgreen")) +
+  labs(title = "Lung Cancer Status by Race",
+       x = "Race",
+       y = "Percentage",
+       fill = "Lung Cancer Status") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  # Rotate x-axis labels for better readability
+```
+
+```{r}
+# Filtering out observations with missing values of Lung_cancer or Cigarettes_No
+FinalData_adult_filtered <- Synthetic_data %>%
+  filter(!is.na(Lung_cancer) & !is.na(Cigarettes_No), Lung_cancer!= "Don't Know", Lung_cancer!= "Refused")
+
+# Creating boxplot
+ggplot(FinalData_adult_filtered, aes(x = Lung_cancer, y = Cigarettes_No, fill = Lung_cancer)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Lung Cancer" = "red", "No Cancer" = "green")) +
+  labs(title = "Number of Cigarettes Smoked by Lung Cancer Status",
+       x = "Lung Cancer Status",
+       y = "Number of Cigarettes") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5)) #Centers the title
+```
+
+```{r}
+# Filtering to include only individuals with lung cancer to show age at diagnosis
+FinalData_adult_filtered <- Synthetic_data %>%
+  filter(Lung_cancer == "Lung Cancer" & !is.na(Age_Lung_Cancer), Lung_cancer!= "Don't Know", Lung_cancer!= "Refused")
+
+# Creating the boxplot
+ggplot(FinalData_adult_filtered, aes(x = Lung_cancer, y = Age_Lung_Cancer, fill = Lung_cancer)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Lung Cancer" = "red")) +
+  labs(title = "Age at Lung Cancer Diagnosis",
+       x = "Lung Cancer Status",
+       y = "Age at Diagnosis") +
+  theme_minimal() +
+  theme(legend.position = "none")+
+  theme(plot.title = element_text(hjust = 0.5)) #Centers the title
+```
+
+```{r}
+# Reshaping the data to long format
+FinalData_adult_long <- Synthetic_data %>%
+  select(Sex, Alcohol_No, Cigarettes_No) %>%
+  pivot_longer(cols = c(Alcohol_No, Cigarettes_No), names_to = "Substance", values_to = "Amount") %>%
+  filter(!is.na(Sex), !is.na(Amount), Sex!="Don't Know")  # Excluding Missing Values
+
+# Create the boxplot
+ggplot(FinalData_adult_long, aes(x = Sex, y = Amount, fill = Substance)) +
+  geom_boxplot() +
+  scale_fill_manual(values = c("Alcohol_No" = "blue", "Cigarettes_No" = "red")) +
+  labs(title = "Distribution of Alcohol and Cigarettes consumption by Sex",
+       x = "Sex",
+       y = "Number",
+       fill = "Substance") +
+  theme_minimal()+
+  theme(plot.title = element_text(hjust = 0.5)) #Centers the title
+```
+
+## Discussion and Conclusion 
+When looking at the summary table, once can see that for the categorical variables, the proportions for each category are fairly similar, with the exception of the Age_Lung_Cancer variable. I was unable to replicate all of the missing data points (NA) that made up most of the observation for that variable. As for the numerical variables, the statistical information for each variables are fairly similar. 
+
+Visually, when looking at the plots, most of them are fairly similar. The histogram visually shows the distribution that was shown with the previous data set. The bar graphs were all fairly similar. The boxplot showed greater differences, suggesting that my data set had greater variance. 
 
 
