@@ -2,4 +2,173 @@
 title: "Presentation Exercise"
 ---
 
-Placeholder file for the future data/results presentation exercise.
+I have re-created the chart titled "Share of members in Congress from each generation in Congress today". This chart is a part of an article titled, 'Congress Today Is Older Than it's Even Been' which was published on FiveThirtyEight website on April 3, 2023. The article, accessible at FiveThirtyEight, provides an insightful look at the age composition of Congress, supported by publicly available data.
+
+The article can be found at https://fivethirtyeight.com/features/aging-congress-boomers/
+
+```{r}
+#Loading packages required for the task
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+library(here)
+library(readr)
+library(scales)
+library(gt)
+library(DT)
+library(dplyr)
+```
+
+
+```{r}
+# Importing the data
+data_path <- here("presentation-exercise/data_aging_congress.csv")
+
+# Reading the csv file using the path
+data <- read_csv(data_path)
+
+```
+Checking the data structure and summary
+```{r}
+str(data)
+
+summary(data)
+```
+
+The graph is a stacked area chart which shows the composition of U.S. Congress  over time by the generations of its  members. The dataset includes details of the congress members such as identification number, name, state, birthday, age in days, age in years, the generation the member belongs to, and total numbers of the Congress and the chambers attended by each member. 
+
+The preparation of the data involved setting the generation order and transforming the 'start_date' into a year format. With the help of Chat GPT, I was able to use mutate, group_by, and summarise functions in R to create year, and calculate counts and proportions of Congress members by generation and year. The ggplot2 package helped creation of the chart that replicated the original's aesthetics. The data manipulation enabled the recreation of the stacked area chart with precision, although aligning the legend exactly as in the original chart proved to be a challenge. I managed to display the legends in two rows with slight differences from the original chart. The process was iterative. A key finding in this process was the importance of ordering the 'generation' categories from youngest to oldest to accurately replicate the original chart.
+
+```{r}
+# Set the order of generations from the youngest to the oldest
+
+generation_levels <- c("Gen Z", "Millennial", "Gen X", "Boomers", "Silent", "Greatest", "Lost", "Missionary", "Progressive", "Gilded")
+
+
+# Prepare the data for plotting
+  data_processed <- data %>%
+      #Convert 'start_date' to year
+    mutate(year = year(ymd(start_date)), 
+     #Set generation in the order as described in generation_levels
+       generation = factor(generation, levels = generation_levels)) %>% 
+        #Group generation by year
+          group_by(year, generation) %>%
+          #Count the number of members per generation and year       
+            summarise(count = n(), .groups = 'drop') %>%
+              group_by(year) %>%
+              #Calculate proportion of each generation per year           
+                mutate(total = sum(count), proportion = count / total) %>%
+                  
+                #Ungroup the data frame for plotting              
+                  ungroup()
+   
+  
+# Convert 'generation' to uppercase
+data_processed <- data_processed %>%
+  mutate(generation = toupper(as.character(generation)),
+         generation = factor(generation, levels = toupper(generation_levels)))
+
+
+```
+
+Generating the chart using the data and placing it with the original chart.The final chart almost replicates the original chart except for some minor differences such as the appearance of the horizontal grid lines and the legends. 
+
+```{r echo=FALSE, out.width="50%", fig.show='hold', warning=FALSE}
+# Include the PNG image
+knitr::include_graphics("Graph_Original.png")
+
+# Plot the data with ggplot2
+ggplot(data_processed, aes(x = year, y = proportion, fill = generation, group = generation)) +
+  geom_area(position = 'stack', color='white') +
+  #Set breaks at intervals of 10 years
+    scale_x_continuous(breaks = seq(1920, 2023, by = 10),
+                     #Set limits from 1920 to 2023
+                     limits = c(1920, 2023)) +        
+      #Scale the y-axis from 0% to 100% with intervals of 20%    
+        scale_y_continuous(labels = percent_format(), breaks = seq(0, 1, by = 0.2), limits = c(0, 1)) +
+  scale_fill_manual(values = c("GILDED" = "gold3",     # Applying the closest color to each generation
+                               "PROGRESSIVE" = "pink",
+                               "MISSIONARY" = "violet",
+                               "LOST" = "gray50",
+                               "GREATEST" = "aquamarine",
+                               "SILENT" = "yellow2",
+                               "BOOMERS" = "orange",
+                               "GEN X" = "slateblue1",
+                               "MILLENNIAL" = "skyblue",
+                               "GEN Z" = "magenta"),
+  name = "", # Remove the legend title
+  #Arranging the legend items in two rows and in reverse order of generation_level
+  guide = guide_legend(nrow = 2, reverse = TRUE)) + 
+
+  theme_minimal() +
+  labs(title = "Share of members in Congress from each generation, 1919 to 2023",
+       x = "",
+       y = "") +
+  theme(panel.ontop = TRUE,
+        legend.position = "top", # Position the legend at the top
+        legend.box = "horizontal", #Layout the legend item horizontally
+        legend.text = element_text(size = 7), #Make legend text smaller
+        legend.key.size = unit(0.4, "cm"), #Make legend keys smaller
+        legend.spacing.x =  unit(0.4, "cm"), #Adjust spacing between legend items
+        panel.grid.major.x = element_blank(), # Remove vertical grid lines
+        panel.grid.minor.x = element_blank()) # Remove minor vertical grid lines
+       # panel.grid.major.y = element_line(color = "grey70", size = 0.5), # Add horizontal grid lines
+        
+```
+
+I leveraged the 'DT' package to construct an interactive table that mirrored the stacked area chart, adding a state column for a more granular analysis. This interactive table enables users to filter and explore the composition of Congress by generation, year, and state, offering a dynamic tool for engaging with the dataset. 
+
+
+```{r}
+# Set the generations from the youngest to the oldest 
+
+generation_levels <- c("Gilded", "Progressive","Missionary","Lost","Greatest","Silent","Boomers","Gen X","Millennial","Gen Z")
+
+#Creating a subset of the data including required columns fo the table
+data_table <- data %>%
+  dplyr::mutate(year = lubridate::year(lubridate::ymd(start_date)),
+                generation = factor(generation, levels = generation_levels)) %>%
+  dplyr::group_by(year, generation, state_abbrev) %>%
+  dplyr::summarise(count = n(), .groups = 'drop') %>%
+  dplyr::group_by(year, state_abbrev) %>%
+  dplyr::mutate(total = sum(count),
+                proportion = count / total) %>%
+  dplyr::ungroup() %>%
+  dplyr::select(Year=year, State = state_abbrev, Generation= generation, count, total, Proportion=proportion)
+
+```
+
+
+
+```{r}
+
+# Prepare the data for the table
+data_for_table <- data_table %>%
+  select(Year, State, Generation, Proportion) %>%
+  mutate(Generation = factor(Generation, levels = generation_levels))
+  
+# Render the interactive table 
+datatable(
+  data_for_table,
+  filter = 'top', # Enable filtering options at the top of the table
+  options = list(
+    pageLength = 10, # Set the initial number of rows to display
+    autoWidth = TRUE, # Adjust column width automatically
+    searching = TRUE # Enable the search box
+  ),
+  rownames = FALSE # Hide row names
+) %>% 
+  formatPercentage('Proportion', 2) %>% # Format 'Proportion' as percentage with 2 decimals
+  
+  formatStyle(
+    columns = c('Year','Generation', 'State'), # Specify which columns to style
+    `text-align` = 'center' # Align text to the left
+  )
+
+```
+
+
+
+
+
+
