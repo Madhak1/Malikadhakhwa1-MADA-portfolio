@@ -73,9 +73,8 @@ data_processed <- data_processed %>%
 
 Generating the chart using the data and placing it with the original chart.The final chart almost replicates the original chart except for some minor differences such as the appearance of the horizontal grid lines and the legends. 
 
-```{r echo=FALSE, out.width="50%", fig.show='hold', warning=FALSE}
-# Include the PNG image
-knitr::include_graphics("Graph_Original.png")
+```{r warning=FALSE}
+#{r echo=FALSE, out.width="50%", fig.show='hold', warning=FALSE}
 
 # Plot the data with ggplot2
 ggplot(data_processed, aes(x = year, y = proportion, fill = generation, group = generation)) +
@@ -112,7 +111,10 @@ ggplot(data_processed, aes(x = year, y = proportion, fill = generation, group = 
         legend.spacing.x =  unit(0.4, "cm"), #Adjust spacing between legend items
         panel.grid.major.x = element_blank(), # Remove vertical grid lines
         panel.grid.minor.x = element_blank()) # Remove minor vertical grid lines
-       # panel.grid.major.y = element_line(color = "grey70", size = 0.5), # Add horizontal grid lines
+       
+# Include the PNG image
+knitr::include_graphics("Graph_Original.png")
+
         
 ```
 
