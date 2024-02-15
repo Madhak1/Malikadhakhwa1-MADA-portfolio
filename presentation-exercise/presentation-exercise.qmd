@@ -6,7 +6,8 @@ I have re-created the chart titled "Share of members in Congress from each gener
 
 The article can be found at https://fivethirtyeight.com/features/aging-congress-boomers/
 
-```{r}
+```{r }
+#| warning: false
 #Loading packages required for the task
 library(tidyverse)
 library(lubridate)
