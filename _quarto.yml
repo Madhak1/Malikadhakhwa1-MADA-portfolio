@@ -22,6 +22,8 @@ website:
             file: data-exercise/data-exercise.qmd
           - text: "Data Analysis Exercise"
             file: cdcdata-exercise/cdcdata-exercise.qmd
+          - text: "Fitting Exercise"
+            file: fitting-exercise/fitting-exercise.qmd
     right:
       - icon: github 
         href: https://github.com/Madhak1/Malikadhakhwa1-MADA-portfolio        
