@@ -2,13 +2,12 @@
 title: "fitting-exercise"
 ---
 
-In this exercise, a model is fitted to a data set (mavoglurant_A2121_nmpk) from the R package nlmixr2data 
-First, required packages are installed and loaded.
+This exercise uses the same data as in the exercise 8 with advanced linear modelling techniques. As with exercise 8, a model is fitted to a data set (mavoglurant_A2121_nmpk) from the R package nlmixr2data. First, required packages are installed and loaded.
 
 ```{r}
 #| message: false
 #| warning: false
-library(readxl) #for loading Excel files
+library(readr) #for loading Excel files
 library(dplyr) #for data processing/cleaning
 library(tidyr) #for data processing/cleaning
 library(skimr) #for nice visualization of data 
@@ -19,40 +18,37 @@ library(patchwork) #for combine plots
 library(tidymodels)
 ```
 
+Setting a random seed during analysis step
+
+```{r}
+rngseed = 1234
+```
 
 Data is loaded
 
 ```{r}
+#| message: false
+#| warning: false
 # path to data using here function
-data_location <- here::here("fitting-exercise","Mavoglurant_A2121_nmpk.csv")
-rawdata <- read.csv(data_location)
+rawdata <- readr::read_csv("Mavoglurant_A2121_nmpk.csv")
 ```
-
-
 Checking the data
 
 ```{r}
-head(rawdata)
+#summary(rawdata)
 skimr::skim(rawdata)
 ```
 
-
-Next, a plot of DV over time stratified by Dose is created to have a visual inspection of the data. A line for each individual is created by grouping the observations by ID. .
+Next, three plots of DV over time stratified by the three Dose levels are created to have a visual inspection of the data. These  plots are re-created by grouping the observations by ID following Dr. Handel's codes in solution to module 8 Exercise.
 
 ```{r}
-#Defining a color palette for the chart
+#exploring data  
 
-custom_colors <- c("darkblue", "red", "green" )
+p1<- rawdata %>% ggplot()+
+      geom_line(aes(x= TIME, y=DV, group = as.factor(ID), color= as.factor(DOSE))) +
+      facet_wrap(~DOSE, scales = "free_y")
+p1
 
-#The 'group' aesthetic is used to connect observations by ID in order to show a line for each individual  
-
-ggplot(rawdata, aes (x=TIME, y = DV, group = ID, color=as.factor(DOSE))) + 
-  geom_line() +
-  labs(title = "DV over Time by DOSE", x = "Time", y = "DV", color="DOSE") +
-  theme_minimal()+
-  scale_color_manual(values = custom_colors)
-
-  
 ```
 
 The lines are not smooth. As informed in the topic, the reason for this could be that some individuals potentially have received the drug more than once, which is indicated by having both entries with OCC=1 and OCC=2. However, in absence of information on the OCC values, the analysis looks into the data set with OCC=1 only. A subset data frame is created keeping only those observations for which OCC has a value of '1'
@@ -60,23 +56,17 @@ The lines are not smooth. As informed in the topic, the reason for this could be
 ```{r}
 
 #Creating a sub set of data including observations with OCC=1
-dataclean_step1 <- rawdata %>% 
-                    dplyr::filter(OCC==1)
-skimr::skim(dataclean_step1)
+dataclean_step1 <- rawdata %>% filter(OCC==1)
+#skimr::skim(dataclean_step1)
 
 ```
-Again, a plot of DV over time stratified by Dose is created. The plot looks smoother now.
+Again, a plot of DV over time stratified by Dose is created.
 
 ```{r}
-#Defining a color palette for the chart
-custom_colors <- c("darkblue", "red", "green" )
-
-#The 'group' aesthetic is used to connect observations by ID in order to show a line for each individual  
-ggplot(dataclean_step1, aes (x=TIME, y = DV, group = ID, color=as.factor(DOSE))) + 
-  geom_line() +
-  labs(title = "DV over Time by DOSE", x = "Time", y = "DV", color="DOSE") +
-  theme_minimal()+
-  scale_color_manual(values = custom_colors)
+#p1.1<- dataclean_step1 %>% ggplot()+
+ #     geom_line(aes(x= TIME, y=DV, group = as.factor(ID), color= as.factor(DOSE))) +
+  #    facet_wrap(~DOSE, scales = "free_y")
+#p1.1
 
   
 ```
@@ -85,36 +75,39 @@ Next, two subsets data frame are created. In the first subset, observations wher
 
 ```{r}
 #Creating a subset excluding the observations with TIME=0
-datasubset_1 <- dataclean_step1 %>% dplyr::filter(TIME != 0) %>%
+
+datasubset_1 <- dataclean_step1 %>% filter(TIME != 0) %>%
   #Grouping by ID
-   dplyr::group_by(ID) %>%
+   group_by(ID) %>%
   #Creating variable Y, which is sum of the DV variables by ID
-      dplyr::summarize(Y=sum(DV, na.rm = TRUE), .groups = "drop")
+      dplyr::summarize(Y=sum(DV))
+
 
 #Creating a subset including only observations with TIME=0 
 datasubset_2 <- dataclean_step1 %>% 
-                    dplyr::filter(TIME==0)
+                    filter(TIME==0)
 
 #Inner joining the two subsets to create a new data frame 
-data_joined <- inner_join(datasubset_1, datasubset_2, by = "ID")
-skimr::skim(data_joined)
+data_joined <- left_join(datasubset_1, datasubset_2, by = "ID")
+#skimr::skim(data_joined)
 
 ```
 
-A final data set is created by keeping only the variables Y, DOSE, AGE, SEX, RACE, WT, HT. DOSE, SEX and RACE are coded as factors.
+A final data set is created by keeping only the variables Y, DOSE, AGE, SEX, WT and HT. SEX is coded as factor. 
+
+RACE is not included in the data. The original summary shows that RACE has 4 levels. The level 88 of RACE has 8 observations and 7 has 2 observations. In absence of the codebook, it is unclear the reason of naming those levels with numerical values distant from the other two names with top counts. 
 
 ```{r}
 #sub set of data_joined keeping only the required variables
 data_final <- data_joined %>%
-  select(Y, DOSE, AGE, SEX, RACE, WT, HT) %>%
-  #converting SEX, RACE and DOSE as factors
-  mutate(SEX = as.factor(SEX), RACE=as.factor(RACE))
+  select(Y, DOSE, AGE, SEX, WT, HT) %>%
+  #converting SEX as factors
+  mutate(across(c(SEX), as.factor))
+
+readr::write_rds(data_final, "mavoglurant.rds")
 
 skimr::skim(data_final)
 ```
-
-The data summary shows that SEX has 2 levels and RACE has 4 levels. The level 88 of RACE has 8 observations and 7 has 2 observations. In absence of the codebook, it is unclear the reason of naming those levels with numerical values distant from the other two names with top counts. This will be kept in the data for further analyses.
-
 **Exploratory Data Analysis**
 
 A table is created for descriptive analysis by Dose.
@@ -127,7 +120,6 @@ table1 <- tbl_summary(
   type = list(
     DOSE ~ "categorical", #Specifying DOSE as categorical
     SEX ~ "categorical",  #Specifying SES as categorical
-    RACE ~ "categorical", #Specifying RACE as categorical
     Y ~ "continuous2",
     AGE ~ "continuous2",
     WT ~ "continuous2",
@@ -168,20 +160,20 @@ ggsave(filename = plot1_file, plot=plot1, bg="white")
 
 ```
 
-Bar charts are plotted for visual inspection of distribution of factor variables. The bar chart indicates smaller representation of Dose 37.5, Sex level of 2 and Races 7 and 88 in the data. 
+Bar charts are plotted for visual inspection of distribution of factor variables. The bar chart indicates smaller representation of Dose 37.5 and Sex level of 2. 
 
 ```{r}
 #creating a combined plot for DOSE, SEX and RACE. For this plot DOSE is treated as a factor as it has only 3 levels.
 plot2 <- 
   data_final %>%
   mutate(DOSE = as.factor(DOSE)) %>% # Convert DOSE to factor here
-  select(DOSE, SEX, RACE) %>%
+  select(DOSE, SEX) %>%
   pivot_longer(everything(), names_to = "name", values_to = "value") %>%
-  mutate(name = factor(name, levels = c("DOSE", "SEX", "RACE"))) %>%
+  mutate(name = factor(name, levels = c("DOSE", "SEX"))) %>%
   ggplot(aes(x = value, fill = name)) +
   geom_bar(alpha = 0.5, color = "black") +
   facet_wrap(~name, scales = "free") +
-  scale_fill_manual(values = c("DOSE" = "lightgreen", "SEX" = "salmon", "RACE" = "skyblue"))
+  scale_fill_manual(values = c("DOSE" = "lightgreen", "SEX" = "salmon"))
 plot2
 
 #Saving the figure in the folder
@@ -207,7 +199,7 @@ plot3_file <- here("fitting-exercise", "Y_Dose.png")
 ggsave(filename = plot3_file, plot=plot3, bg="white")
 ```
 
-Next, Scatter plot is created for Y by Age stratified by Dose. For doses 37.5 and 50, the plot indicates a linear increase in Y as Age increases. For the dose of 25, such relationship is negative.  
+Next, Scatter plot is created for Y by Age stratified by Dose. For the dose of 50, the plot indicates a linear increase in Y as Age increases. For the dose of 25, such relationship is negative and for 37.50, the regression line appears comparatively stable.   
 
 ```{r}
 #| message: false
@@ -286,191 +278,206 @@ ggsave(filename = plot7_file, plot=plot6, bg="white")
 
 **MODEL FITTING**
 
+The data is randomly splitted into 75% train and 25% test sets following the [Data Splitting sectoin of the get Started tidymodels tutorial](https://www.tidymodels.org/start/recipes/#data-split).Linear model is fitted on the training data. In later part of the exercise the model performance will be measured by applying it on the testing data.
+
+```{r}
+#setting the random seed for reproducibility
+set.seed(rngseed)
+
+#Assigning 75% of the data into the training set
+data_split <- initial_split(data_final, prop = .75)
+
+#Creating data frames for the train and test data
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+#checking the data structure
+str(train_data)
+str(test_data)
+
+```
+
 **Linear Model**
 
-A linear model is fitted to the continuous outcome (Y) using the main predictor of interest DOSE with the help of the recommended website https://www.tidymodels.org/start/models/.
+Two linear models are fitted to the continuous outcome (Y) of the train data, first using only the main predictor of interest DOSE and second  using all predictors. A null model is also fitted.
 
 ```{r}
-#using linear regression function from tidymodels to regress Y on DOSE
-#The default for linear_reg() is "lm" for OLS
-lm_dose <- linear_reg() %>% set_engine("lm") %>% fit(Y ~ DOSE, data = data_final)
-#Using tidy for better format of the result table
-tidy(lm_dose)
+#For reproducibility
+set.seed(rngseed)
 
-```
-The estimates suggests a positive relationship between the Y and DOSE indicating a unit increase in DOSE increases Y by 58.21 units.
+#Using linear regression function from tidymodels. The default for linear_reg() is "lm" for OLS
+lin_mod <- linear_reg() %>% set_engine("lm") 
 
-RMSE is computed for this model with the help of ChatGPT.
+#fitting Y on Dose
+linfit_dose1 <- lin_mod%>%fit(Y ~ DOSE, data = train_data)
 
-```{r}
-#First predict using the model
-lm_dose_pred <- predict(lm_dose, new_data = data_final)%>%
-  bind_cols(data_final) #adds teh predicted values to the same dataframe
+#Fitting Y on all other variables in the data
+linfit_all1 <- lin_mod%>%fit(Y~., data=train_data)
 
-lm_dose_pred
-
-#Calculate RMSE
-rmse_lm_dose <- lm_dose_pred %>%
-  yardstick::rmse(truth = Y, estimate = .pred)
-
-#Calculate R-squared
-rsq_lm_dose <- lm_dose_pred %>% 
-  yardstick::rsq(truth = Y, estimate = .pred)
-
-
-metrics_lm_dose <- tibble(
-                        Metric = c ("rmse_lm_dose", "rsq_lm_dose"),
-                        Value = c(rmse_lm_dose$.estimate, rsq_lm_dose$.estimate))
-metrics_lm_dose
-
-```
-The RMSE is 666.46 and R-squared is approximately 0.52 for the model containing only dose as the predictor of Y.
-
-
-Next, a linear model is fitted to the continuous outcome (Y) using the all predictors with the help of the website https://www.tidymodels.org/start/models/ recommended in the class. 
-
-```{r}
-#using linear regression function from tidymodels to regress Y on DOSE
-#The default for linear_reg() is "lm" for OLS
-lm_all <- linear_reg() %>% set_engine("lm") %>% fit(Y ~ DOSE + AGE +SEX + RACE + WT + HT, data = data_final)
+# Fitting a null model using tidymodels' parsnip engine
+null_mod <- null_model() %>% set_engine("parsnip") %>% set_mode("regression")
+linfit_null1 <- null_mod %>%
+  fit(Y ~ 1, data = train_data)
 
 #Using tidy for better format of the result table
-tidy(lm_all)
+tidy(linfit_dose1)
+tidy(linfit_all1)
+tidy(linfit_null1)
 
 ```
-The estimates suggests, controlling for the effects of other variables, there is a positive relationship of Y with each of DOSE and AGE and a negative relation with each of WT and HT. Holding all other variables constant, Y is expected to decrease for a change in SEX variable from 1 to 2 and Y is expected to increase for a change in RACE variable from 1 to 2.   
 
-RMSE is computed for this model with the help of ChatGPT.
+The results of both the first and second models suggest a positive relationship between the Y and DOSE. The second model suggests that controlling for the effects of other variables, there is a positive relationship of Y with AGE and a negative relation with each of WT and HT. Holding all other variables constant, Y is expected to decrease for a change in SEX variable from 1 to 2.   
 
-```{r}
-#First predict using the model
-lm_all_pred <- predict(lm_all, new_data = data_final)%>%
-  bind_cols(data_final) #adds the predicted values to the same dataframe
-
-lm_all_pred
-
-#Calculate RMSE
-rmse_lm_all <- lm_all_pred %>%
-  yardstick::rmse(truth = Y, estimate = .pred)
-
-#Calculate R-squared
-rsq_lm_all <- lm_all_pred %>% 
-  yardstick::rsq(truth = Y, estimate = .pred)
-
-
-metrics_lm_all <- tibble(
-                        Metric = c ("rmse_lm_all", "rsq_lm_all"),
-                        Value = c(rmse_lm_all$.estimate, rsq_lm_all$.estimate))
-metrics_lm_all
-
-```
-RMSE measures the average difference between the predicted values from the model and the actual values in the data. A lower RMSE value indicates a better fit to the data. Contrarily, a higher R-squared value is indicative of a model explaining a greater proportion of variance in the dependent variable. Higher R-squared values indicate a model's stronger explanatory power. Comparing the two linear models, the second model has a lower RMSE value of 590.85 compared to 666 of the first model. The R-squared is higher at 0.62 for the second model compared to 0.52 of the first model. This indicates that the linear model containing all predictor variables outperforms the one containing only DOSE in both metrics.
-
-The interpretation should be made with caution and should be contextualized within the analysis domain, the specific scales of the variables involved, and the potential for multicollinearity among predictors. For example, the scatter plot pairwise matrix suggests a high correlation between HT and WT indicating redundancy in the predictors. Adding more predictors can artificially inflate the R-square  without necessarily improving the model's predictiveness. As R-squared does not penalize for the inclusion of correlated predictors, it can lead to overestimating the model's explanatory power.
-
-
-**Logistic Models**
-
-Next, logistic model is fitted for the categorical variable SEX with Dose as the predictor. ROC-AUC and Accuracy are also computed for this model.
+Next, RMSE metrics are computed for all the models following Dr. Handel's codes for solutions to module 8 exercise.
 
 ```{r}
-
-# Prepare the data: Split into training and testing sets
-set.seed(123) #for reproducibility
-data_split <- initial_split(data_final, prop = 0.80) #80% of the data set as training data
-train_data <- training(data_split)
-test_data <- testing(data_split)
-
-# Defining the logistic regression model specification
-logistic_spec <- logistic_reg() %>%
-  set_engine("glm") %>%
-  set_mode("classification")
-
-# Fitting the model to the training data
-logistic_fit_dose <- logistic_spec %>%
-  fit(SEX ~ DOSE, data = train_data)
-tidy(logistic_fit_dose)
-
-# Predicting on the test data
-predictions_dose <- predict(logistic_fit_dose, new_data = test_data, type = "prob")
-
-# Adding the predicted probabilities back to the test set for evaluation
-test_data <- bind_cols(test_data, predictions_dose)
-test_data
-
-# Calculating ROC AUC and Accuracy
-# SEX is a factor with levels "1" and "2", and the interest is in the level "1" predictions
-roc_auc_dose <- roc_auc(test_data, truth = SEX, .pred_1)
-
-test_data <- test_data %>%
-  mutate(predicted_class = if_else(.pred_1 > 0.5, '1', '2'),
-         predicted_class = factor(predicted_class, levels = levels(SEX)))
-
-# Now calculate accuracy
-accuracy_dose <- accuracy(test_data, truth = SEX, estimate = predicted_class)
-
-# Create a tibble to hold the metrics
-metrics_table <- tibble(
-  Metric = c("ROC AUC", "Accuracy"),
-  Value = c(roc_auc_dose$.estimate, accuracy_dose$.estimate) # Extract the metric values
-)
-metrics_table
-```
-With the assumption that  R treats the first level of a factor ('1' in this case) as the reference category in logistic regression, the above estimate suggests a negative association of DOSE with the probability of SEX being 2. 
-
-The capacity of this model to distinguish between SEX levels based on DOSE is 0.5 which indicates an ability same as random guessing. The accuracy is 0.92, which suggests this model has predicted 92% of the SEX correctly.  
-
-Next, logistic model is fitted for the categorical variable SEX using all the predictors. 
-
-```{r}
+#| message: false
 #| warning: false
-# Preparing the data by splitting into training and testing sets
-set.seed(123) #for reproducibility
-data_split <- initial_split(data_final, prop = 0.80)
-train_data <- training(data_split)
-test_data <- testing(data_split)
+#Computing the RMSE for model 1
+metrics_dose1 <- linfit_dose1 %>%
+  predict(train_data) %>%
+  bind_cols(train_data)%>%
+  metrics(truth=Y, estimate=.pred)
 
-# Defining the logistic regression model specification
-logistic_spec <- logistic_reg() %>%
-  set_engine("glm") %>%
-  set_mode("classification")
+#Computing the RMSE for model 2
+metrics_all1 <- linfit_all1 %>%
+  predict(train_data) %>%
+  bind_cols(train_data)%>%
+  metrics(truth=Y, estimate=.pred)
 
-# Fitting the model to the training data
-logistic_fit_all <- logistic_spec %>%
-  fit(SEX ~ Y + DOSE + AGE + RACE + WT + HT, data = train_data)
-
-tidy(logistic_fit_all)
-
-# Predicting on the test data
-predictions <- predict(logistic_fit_all, new_data = test_data, type = "prob")
+#Computing the RMSE for model 3
+metrics_null1 <- linfit_null1 %>%
+  predict(train_data) %>%
+  bind_cols(train_data)%>%
+  metrics(truth=Y, estimate=.pred)
 
 
-# Adding the predicted probabilities back to the test set for evaluation
-test_data <- bind_cols(test_data, predictions)
-
-
-# Calculating ROC AUC and Accuracy
-# SEX is a factor with levels "1" and "2", and the interest is in the level "1" predictions
-roc_auc_all <- roc_auc(test_data, truth = SEX, .pred_1)
-
-test_data <- test_data %>%
-  mutate(predicted_class = if_else(.pred_1 > 0.5, '1', '2'),
-         predicted_class = factor(predicted_class, levels = levels(SEX)))
-
-# Calculating accuracy
-accuracy_all <- accuracy(test_data, truth = SEX, estimate = predicted_class)
-
-# Creating a tibble to hold the metrics
-metrics_table <- tibble(
-  Metric = c("ROC AUC", "Accuracy"),
-  Value = c(roc_auc_all$.estimate, accuracy_all$.estimate) # Extract the metric values
-)
-metrics_table
+#print the results
+print(metrics_null1)
+print(metrics_dose1)
+print(metrics_all1)
 
 ```
-With the assumption that  R treats the first level of a factor ('1' in this case) as the reference category in logistic regression, the above estimate suggests each of the numerical predictors, keeping other variables constant, has a negative association with the probability of SEX being 2 except for AGE. Compared to RACE1, the probability of SEX being 2 decrease for RACE2. 
 
-The second model has a higher ROC-AUC (0.95) compared to the first model (0.50) suggesting that the second model is comparatively better in distinguishing SEX levels. On the other hand, this model has a slightly lower accuracy (0.875) compared to the first model (0.917). Considering both these metrics, the second model containing all predictor variables is a better choice. 
+The RMSEs are 948, 702 and 627 for the null model, model with only DOSE and model with all the predictors respectively. RMSE measures the average difference between the predicted values from the model and the actual values in the data. A lower RMSE value indicates a better fit to the data. Thus, the linear model containing all predictor variables outperforms the other two models according to the RMSE metrics.
+
+Subsequently, the model performance is computed using cross-validation technique with 10-folds for the two models. This CV technique subsamples the training data 10 times and fits each of the models to the data, wherein 90% of the data is used to fit the model, and 10% to evaluate the model. 
+
+```{r}
+#setting the random seed for reproducibility
+set.seed(rngseed)
+
+folds <-vfold_cv(train_data, v=10)
+folds
+```
+
+In the following steps, an object is built for resampling using 'workflow' function of tidymodels. The 'workflow' function bundles together the pre-processing, modeling, and post-processing requests.
+
+```{r}
+#setting the random seed for reproducibility
+set.seed(rngseed)
+#Resampling using workflow for the model with only DOSE as predictor
+linfit_dose2 <- 
+	workflow() %>%
+	add_model(lin_mod) %>%
+  add_formula(Y ~ DOSE)%>%
+	fit_resamples(folds)
+
+#Resampling using workflowfor for the model with all predictors
+linfit_all2 <- 
+	workflow() %>%
+	add_model(lin_mod) %>%
+  add_formula(Y ~ .)%>%
+	fit_resamples(folds)
+
+#extracting the performance statistics results created from the 10 assessment sets. 
+
+collect_metrics(linfit_dose2)
+collect_metrics(linfit_all2)
+
+```
+
+The application of 10-fold CV led to an improvement in the RMSE of the model including only DOSE, reducing it to 690 from 702, which was observed when the training data was utilized without CV. Conversely, the RMSE of the model including all the predictors experienced an increase to 645 with 10-fold CV, compared to 627 without CV. 
+
+Unlike the train/test model without CV, the 10-fold CV calculates 10 separate RMSE values for each sample and averages these values. This process introduces some variability among the generated RMSEs. Analysis revealed that the full model exhibits a smaller standard error of 64.81 for RMSE compared to 67.49 of the model that includes only the DOSE predictor.
+
+
+Finally, the 10-fold CV modelling is performed again to check how different the metric is when using a different seed for randomization. 
+
+```{r}
+#setting a different random seed
+set.seed(222)
+
+#Assigning 75% of the data into the training set
+data_split_new <- initial_split(data_final, prop = .75)
+
+#Creating data frames for the train and test data
+train_data_new <- training(data_split_new)
+test_data_new <- testing(data_split_new)
+
+```
+
+Preparing the data for 10-fold cross-validation.
+```{r}
+#setting a different random seed
+set.seed(222)
+
+#Creating 10 random samples of the newly generated training data
+folds_new <-vfold_cv(train_data_new, v=10)
+
+```
+
+Using the workflow to compute both the models.
+```{r}
+#setting the random seed for reproducibility
+set.seed(222)
+
+#Resampling using workflow for the model with only DOSE as predictor
+linfit_dose2_new <- 
+	workflow() %>%
+	add_model(lin_mod) %>%
+  add_formula(Y ~ DOSE)%>%
+	fit_resamples(folds_new)
+
+#Resampling using workflowfor for the model with all predictors
+linfit_all2_new <- 
+	workflow() %>%
+	add_model(lin_mod) %>%
+  add_formula(Y ~ .)%>%
+	fit_resamples(folds_new)
+
+#extracting the performance statistics results created from the 10 assessment sets. 
+
+collect_metrics(linfit_dose2_new)
+collect_metrics(linfit_all2_new)
+
+```
+ 
+When a new seed is applied, further reduction is noted in the mean RMSE for the model that included only DOSE as predictor, with value dropping to 664 from the previous seed result of 690.The Standard Error remained relatively unchanged from the previous figure. For the full model, the mean RMSE saw a decrease to 634 with the new seed, down from 648 with the the previous seed. Despite this reduction, the RMSE of the full model still remained higher than that of the full model using the training data without CV. 
+
+In summary, the model that included only DOSE, when subjected to 10-fold CV, showed an optimized RMSE compared to the models fitted on the training data without CV. On the other hand, for the full model, a better RMSE is observed when the model is fitted on the training data without CV.    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
