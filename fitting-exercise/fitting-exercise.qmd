@@ -457,15 +457,160 @@ When a new seed is applied, further reduction is noted in the mean RMSE for the 
 
 In summary, the model that included only DOSE, when subjected to 10-fold CV, showed an optimized RMSE compared to the models fitted on the training data without CV. On the other hand, for the full model, a better RMSE is observed when the model is fitted on the training data without CV.    
 
+# This section added by MUTSA NYAMURANGA
+
+## Model Predictions
+
+I create 3 data frames that combine the observed and predicted values from the 3 original model fits to all of the training data. I also create labels for each model. 
+
+```{r}
+# Creating a data-frame with observed and predicted values from the model with `DOSE` as the predictor
+fitted_dose <- linfit_dose1 %>%
+  predict(train_data) %>%
+  bind_cols(train_data)
+
+# Creating a data-frame with observed and predicted values from the model with everything as the predictor
+fitted_all <- linfit_all1 %>%
+  predict(train_data) %>%
+  bind_cols(train_data)
+
+# Creating a data-frame with observed and predicted values from the model
+fitted_null <- linfit_null1 %>%
+  predict(train_data) %>%
+  bind_cols(train_data)
+
+# The dose data frame is Model 1
+fitted_dose$label <- rep("Model 1")
+
+#The all data frame is Model 2
+fitted_all$label <- rep("Model 2")
+
+#The null data frame is Null Model
+fitted_null$label <- rep("Null Model")
+
+#Combined data frame
+fits_combined <- rbind(fitted_dose, fitted_all, fitted_null)
+```
+
+The plots differentiate each of the models by the label with color and shape for the data points. The graph plots the observed value vs the predicted value. 
+
+When observing the graphs we created in plots 1 and plots 2, it becomes obvious that the model with all of the predictors show the greatest predictions. The Dose model and the Null model both show straight lines, which is easily explained by the properties of a null model.
+
+```{r}
+# Create the ggplot figure to graph the predictive values vs the observed value for the three models
+plot1 <- ggplot(
+  fits_combined, aes(x = Y, y = .pred, color = label, shape = label)) +
+  geom_point(size=2) +
+   scale_color_manual(values = c("black", "orange", "red"))+
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +  # Adding a 45-degree line
+  labs(x = "Observed Values", y = "Predicted Values", color = "Model", shape = "Model") +
+  xlim(0, 5000) + 
+  ylim(0, 5000)+
+  theme_bw()
 
 
+plot1
+```
+
+Model 2 follows the 45 degree angle line most closest compared to the other two models. 
+
+```{r}
+# Create the same ggplot figure with facets
+plot2 <- ggplot(
+  fits_combined, aes(x = Y, y = .pred, color = label)) +
+  geom_point() +
+  scale_color_manual(values = c("black", "orange", "red"))+
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +  # Adding a 45-degree line
+  labs(x = "Observed Values", y = "Predicted Values", color = "Model", shape = "Model") +
+  theme_minimal() +
+  facet_wrap(~ label, scales = "free")+ 
+  xlim(0, 5000) + ylim(0, 5000)
+
+plot2
+```
+
+The plot clearly shows a greater number of negative values compared to positive values, showing that there may be other factos still playing a role in affecting the data. 
+```{r}
+fitted_all <- fitted_all %>%
+  mutate(residuals = .pred - Y)
+
+plot3 <- ggplot(fitted_all, aes(x = .pred, y = residuals)) +
+  geom_point(size = 2, color = "purple") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +  
+  labs(x = "Predicted Values", y = "Residuals") +  
+  ylim(-2500, 2500) +
+  theme_bw()
+
+plot3
+```
 
 
+## Model Uncertainty
+
+I start by setting a random seed and completing the bootstrap function for 100 samples.
+```{r}
+# Set the random seed
+set.seed(443)  
+
+# Load required libraries
+library(rsample)
+library(glmnet)
+
+n_bs <- 100
+
+# Create 100 bootstrap samples using training data
+train_bs <- bootstraps(train_data, times = n_bs)
+```
+
+I then create a loop to fit the model and make predictions using the 100 samples. 
+```{r}
+# Function to make predictions using a fitted model for a given data set
+make_predictions <- function(model, data) {
+  predictions <- predict(model, data)
+  return(predictions)
+}
+
+# Loop over each bootstrap sample, fit model, and make predictions
+bs_predictions <- vector("list", length = n_bs)
+for (i in 1:n_bs) {
+  # Get a single bootstrap sample
+  bs_sample <- rsample::analysis(train_bs$splits[[i]])
+  # Make predictions using the fitted model
+  bs_predictions[[i]] <- make_predictions(linfit_all1, bs_sample)
+}
+# Convert bs_predictions into a matrix
+bs_predictions_matrix <- do.call(cbind, bs_predictions)
+# Compute quantiles
+preds <- apply(bs_predictions_matrix, 2, quantile, c(0.055, 0.5, 0.945))
+```
+
+I then create a data frame to plot all necessary components of the graph including observed data, point estimates from the original predicted data, median and both confidence interval bounds for each sample prediction. 
+
+```{r}
+# Create a data frame containing the observed values and predictions
+bs_plot <- data.frame(
+  Observed = fitted_all$Y,
+  PointEstimate = fitted_all$.pred,  
+  Median = preds[, 2],  
+  LowerBound = preds[, 1],  
+  UpperBound = preds[, 3]   
+)
+
+plot4 <- ggplot(bs_plot, aes(x = Observed, y = PointEstimate)) +
+  geom_point(color = "orange") +  
+  geom_errorbar(aes(ymin = LowerBound, ymax = UpperBound), width = 0.1, color = "lightblue") +   
+  geom_point(aes(y = Median), color = "darkred") +  
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "orange") +  
+  labs(x = "Observed Values", y = "Predicted Values", title = "Observed vs. Predicted Values for Model 2") +
+  xlim(0, 6000) + ylim(0, 6000)+
+  theme_bw()  
+
+# Print the plot
+print(plot4)
+```
 
 
-
-
-
+Upon review of the graph, numerous overlaps are apparent between the prediction medians from the bootstrap samples and the observed values obtained from the original fit. Scattered points suggest the potential influence of additional factors on the data. The new predicted medians and the original observations closely follow the 45-degree line, indicating considerable similarity between the predicted and observed values from both the original fit and the bootstrap fits. This alignment shows the strength of the model in capturing the underlying patterns in the data. 
 
 
 
