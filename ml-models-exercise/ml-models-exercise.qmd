@@ -309,7 +309,7 @@ RF_tunable <- rand_forest(trees=300, mtry = tune(), min_n = tune())%>%
   set_engine("ranger", seed = rngseed)%>%
   set_mode("regression")
 
-#workflow for tunable LASSO model
+#workflow for tunable RF model
 RF_wf_tunable <- workflow()%>%
   add_model(RF_tunable)%>%
   add_recipe(recipe_RF) # recipe_lin_LASSO coded earlier

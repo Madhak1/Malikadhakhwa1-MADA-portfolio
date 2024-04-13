@@ -2,4 +2,394 @@
 title: "Tidy Tuesday Exercise"
 ---
 
-Placeholder file for the future Tidy Tuesday exercise.
+## Eclipses Analysis
+
+This exercise documents the process of analyzing datasets on solar eclipses provided for Tidy Tuesday. The goal is to model the duration of eclipses based on the year of occurence, focusing on total eclipse of 2024, annular eclipse of 2023 and partial eclipses of 2023 and 2024.
+
+First, the required libraries were loaded
+
+```{r}
+#| message: false
+#| warning: false
+library(tidyverse)
+library(jsonlite)
+library(janitor)
+library(here)
+library(fs)
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(tidymodels)
+library(ranger)
+library(yardstick)
+```
+
+## Data Acquisition
+
+Data was sourced from the official Tidy Tuesday GitHub repository. Initial steps included setting up the working environment, downloading the data as JSON files, and transforming them into a tidy format.
+
+Below codes imports the data files from the local directory directly.
+
+```{r}
+#path to data using here function
+data_location_1 <- here::here("tidytuesday-exercise", "eclipse_total_2024.csv")
+data_location_2 <- here::here("tidytuesday-exercise", "eclipse_annular_2023.csv")
+data_location_3 <- here::here("tidytuesday-exercise", "eclipse_partial_2024.csv")
+data_location_4 <- here::here("tidytuesday-exercise", "eclipse_partial_2023.csv")
+
+eclipse_total_2024 <- read.csv(data_location_1)
+eclipse_annular_2023<-read.csv(data_location_2)
+eclipse_partial_2024 <- read.csv(data_location_3)
+eclipse_partial_2023 <- read.csv(data_location_4)
+```
+
+Checking the data
+
+```{r}
+skimr::skim(eclipse_total_2024)
+skimr::skim(eclipse_annular_2023)
+skimr::skim(eclipse_partial_2024)
+skimr::skim(eclipse_partial_2023)
+```
+
+The data does not seem to have any missing values.
+
+Checking the header
+
+```{r}
+head(eclipse_total_2024)
+head(eclipse_annular_2023)
+head(eclipse_partial_2024)
+head(eclipse_partial_2023)
+```
+
+Setting a random seed for reproducibility
+
+```{r}
+rngseed = 123
+```
+
+### Feature Engineering
+
+I added a column for duration of visibility in minutes for all solar eclipses from first to last contact.
+
+```{r}
+#Calculating and adding duration of the eclipse to total eclipse of 2024
+eclipse_total_2024<- eclipse_total_2024 %>%
+  mutate(
+    eclipse_1_time = hms(eclipse_1),
+    eclipse_6_time = hms(eclipse_6),
+    duration = as.numeric(eclipse_6_time - eclipse_1_time)/60  )
+
+#Calculating and adding duration of the eclipse to annular eclipse of 2023
+eclipse_annular_2023<- eclipse_annular_2023 %>%
+  mutate(
+    eclipse_1_time = hms(eclipse_1),
+    eclipse_6_time = hms(eclipse_6),
+    duration = as.numeric(eclipse_6_time - eclipse_1_time)/60
+  )
+
+#Calculating and adding duration of the eclipse to partial eclipse of 2024
+eclipse_partial_2024<- eclipse_partial_2024 %>%
+  mutate(
+    eclipse_1_time = hms(eclipse_1),
+    eclipse_5_time = hms(eclipse_5),
+    duration = as.numeric(eclipse_5_time - eclipse_1_time)/60  )
+
+#Calculating and adding duration of the eclipse to the partial eclipse of 2024
+eclipse_partial_2023<- eclipse_partial_2023 %>%
+  mutate(
+    eclipse_1_time = hms(eclipse_1),
+    eclipse_5_time = hms(eclipse_5),
+    duration = as.numeric(eclipse_5_time - eclipse_1_time)/60  )
+```
+
+In the next phase, I will merge all of the datasets into a single data. Before that, I added a column of eclipse year in each of the data so that each observation can be identified as to which year the eclipse was from and also another column of eclipse type for the purpose of plotting.
+
+```{r}
+#Adding a year identifier column to the total eclipse 2024 data 
+eclipse_total_2024 <- mutate(eclipse_total_2024, eclipse_type='Total_2024', eclipse_year='2024')
+#Adding a year identifier column to the Annular eclipse 2023 data 
+eclipse_annular_2023 <- mutate(eclipse_annular_2023, eclipse_type='Annular_2023', eclipse_year = '2023')
+#Adding a year identifier column to the partial eclipse 2024 data 
+eclipse_partial_2024 <- mutate(eclipse_partial_2024, eclipse_type='Partial_2024',eclipse_year='2024')
+#Adding a year identifier column to the partial eclipse 2023 data 
+eclipse_partial_2023 <- mutate(eclipse_partial_2023, eclipse_type='Partial_2023',eclipse_year='2023')
+```
+
+I combined all the 4 datasets by rows and kept state, city name, lattitude, longitude, duration and eclipse year in the final data. I converted the eclipse_year to a factor variable.
+
+```{r}
+#Combining all the data sets by row
+eclipse_long<- bind_rows(eclipse_total_2024, eclipse_annular_2023, eclipse_partial_2024,eclipse_partial_2023 )%>%
+  #Selecting relevant columns
+  select(state, name, lat, lon, duration, eclipse_year, eclipse_type)%>%
+  #convert to factor
+  mutate(eclipse_year=factor(eclipse_year))
+```
+
+## Exploratory Data Analysis
+
+I created histograms and box plots to visualize the distribution of eclipse durations. Initial observations suggested that the 2023 eclipses had longer durations than those in 2024. This hypothesis will be tested further in the modeling phase.
+
+```{r}
+#Histograms of eclipse duration for each year
+
+ggplot(eclipse_long, aes(x = duration)) +
+  geom_histogram(bins = 50, fill = "skyblue", color = "black") +  # Adjust bins as needed
+  facet_wrap(~ eclipse_type, scales = "free_y") +  # Free y scales if counts vary significantly
+  labs(title = "Duration by Eclipse Year and Type",
+       x = "Duration",
+       y = "Count") +
+  theme_minimal()
+
+```
+
+```{r}
+#Box plot of duration by eclipse year
+ggplot(eclipse_long, aes(x = eclipse_year, y = duration, fill = eclipse_year)) + 
+  geom_boxplot() + 
+  labs(title = "Distribution of duration by year of eclipse", x = "year", y = "Duration") +
+  theme_minimal()
+```
+
+## Model Building
+
+I created three different models using cross-validation to predict eclipse durations:
+
+1.  Linear Model
+2.  Random Forest (RF)
+3.  Decision Tree (DT)
+
+First the data was randomly splitted into 75% train and 25% test sets with the models trained on the former.
+
+```{r}
+#setting the random seed for reproducibility
+set.seed(rngseed)
+
+#Assigning 75% of the data into the training set
+data_split <- initial_split(eclipse_long, prop = .75)
+
+#Creating data frames for the train and test data
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+cv_folds <- vfold_cv(train_data, v=5)
+```
+
+```{r}
+#Linear model
+lin_model <- linear_reg()%>%
+  set_engine ("lm")%>%
+  set_mode("regression")
+
+#Random forest model
+RF_model <- rand_forest()%>%
+  set_engine("ranger", seed = rngseed)%>%
+  set_mode("regression")
+
+#Decision Tree model
+DT_model <- decision_tree()%>%
+  set_engine("rpart")%>%
+  set_mode("regression")
+```
+
+I set up the workflow for all the models.
+
+```{r}
+#workflow for linear model
+lin_workflow <- workflow()%>%
+  add_model(lin_model)%>%
+  add_formula(duration ~ eclipse_year)
+
+#workflow for Random forest model
+RF_workflow <- workflow()%>%
+  add_model(RF_model)%>%
+  add_formula(duration ~ eclipse_year)
+
+#workflow for Decision Tree model
+DT_workflow <- workflow()%>%
+  add_model(DT_model)%>%
+  add_formula(duration ~ eclipse_year)
+
+```
+
+Fit the models
+
+```{r}
+#Defining resampling control to save predictions
+resampling_control <- control_resamples(save_pred = TRUE)
+
+#linear fit with CV
+lin_fit_cv <- fit_resamples(lin_workflow, resamples=cv_folds, metrics = metric_set(rmse, rsq),control = resampling_control)
+#Random forest fit with CV
+RF_fit_cv <- fit_resamples (RF_workflow, resamples = cv_folds, metrics = metric_set(rmse, rsq),control = resampling_control)
+#Decision Tree fit with CV
+DT_fit_cv <- fit_resamples(DT_workflow, resamples = cv_folds, metrics = metric_set(rmse, rsq),control = resampling_control)
+
+#Collecting the metrics
+lin_metrics <-collect_metrics(lin_fit_cv)
+RF_metrics <-collect_metrics(RF_fit_cv)
+DT_metrics <-collect_metrics(DT_fit_cv)
+
+#Collecting the predictions
+lin_predicts<- collect_predictions(lin_fit_cv)
+RF_predicts <- collect_predictions(RF_fit_cv)
+DT_predicts <- collect_predictions(DT_fit_cv)
+
+```
+
+I will choose the best model by comparing the RMSE metric, accuracy of the predicted vs observed value and residuals of the models.
+
+```{r}
+# Extracting mean RMSE and R² for Linear Regression
+lin_rmse <- lin_metrics %>% filter(.metric == "rmse") %>% pull(mean)
+lin_rsq <- lin_metrics %>% filter(.metric == "rsq") %>% pull(mean)
+
+# Extracting mean RMSE and R² for Random Forest
+RF_rmse <- RF_metrics %>% filter(.metric == "rmse") %>% pull(mean)
+RF_rsq <- RF_metrics %>% filter(.metric == "rsq") %>% pull(mean)
+
+# Extracting mean RMSE and R² for Decision Tree
+DT_rmse <- DT_metrics %>% filter(.metric == "rmse") %>% pull(mean)
+DT_rsq <- DT_metrics %>% filter(.metric == "rsq") %>% pull(mean)
+
+# Displaying the extracted metrics
+cat("Linear Regression - RMSE:", lin_rmse, "R²:", lin_rsq, "\n")
+cat("Random Forest - RMSE:", RF_rmse, "R²:", RF_rsq, "\n")
+cat("Decision Tree - RMSE:", DT_rmse, "R²:", DT_rsq, "\n")
+
+```
+
+We can see that the the Linear and Decision Tree models perform slightly better than the Random Forest model based on the RMSE metric though the values are almost similar.
+
+I calculated the predicted values for the training data and residuals.
+
+```{r}
+#Predicting on the training data
+lin_predictions <- collect_predictions(lin_fit_cv)
+RF_predictions <- collect_predictions(RF_fit_cv)
+DT_predictions <- collect_predictions(DT_fit_cv)
+
+# Calculate residuals
+lin_predictions <- lin_predictions %>% mutate(residuals = .pred - duration)
+RF_predictions <- RF_predictions %>% mutate(residuals = .pred - duration)
+DT_predictions <- DT_predictions %>% mutate(residuals = .pred - duration)
+
+# Labeling each data frame of predictions before combining
+DT_predictions$model <- "Decision Tree"
+RF_predictions$model <- "Random Forest"
+lin_predictions$model <- "Linear Regression"
+
+# Combine all predictions into one dataframe
+combined_predictions <- bind_rows(DT_predictions, RF_predictions, lin_predictions)
+
+```
+
+I plotted predicted vs observed values plot and a residual plot.
+
+```{r}
+#Predicted vs. Observed plot
+ggplot(combined_predictions, aes(x = duration, y = .pred, color = model)) +
+  geom_point(alpha = 0.6) +  
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +  # 45-degree line
+  labs(
+    title = "Predicted vs. Observed Values",
+    x = "Observed",
+    y = "Predicted"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("Decision Tree" = "blue", "Random Forest" = "green", "Linear Regression" = "red"))
+
+#Residual Plot
+ggplot(combined_predictions, aes(x = duration, y = residuals, color = model)) +
+  geom_point(alpha = 0.6) +  # Adjust opacity with alpha if needed
+  geom_hline(yintercept = 0,linetype = "dashed", color = "black") +  
+  labs(
+    title = "Residual Plot",
+    x = "Observed",
+    y = "Residuals"
+  ) +
+  theme_minimal() +
+  scale_color_manual(values = c("Decision Tree" = "blue", "Random Forest" = "green", "Linear Regression" = "red"))
+
+```
+
+The plots revealed that both the predictions and residuals of all the models heavily overlapped with each other similar to the RMSE metric. The residuals showed a distinct pattern, not randomly dispersed around the horizontal axis suggesting that none of the models captured the relationship between the predictor and the response variable indicating the need of a different modeling approach.
+
+Despite this, for this exercise, I decided to keep the linear model as the final model for its simplicity. The coefficients were extracted to interpret the effect of the eclipse year on duration.
+
+```{r}
+# Extract the coefficients of the fitted model
+lin_fit <- fit(lin_workflow, data=train_data)
+lin_est <- extract_fit_parsnip(lin_fit)
+tidy(lin_est)
+```
+
+The linear model suggests that the duration of all eclipses during 2024, on average, were shorter than those of 2023.
+
+The next step is to apply this chosen model to the test data to make predictions and evaluate the performance. First the model was trained on the full training data before making predictions on the test data and then was applied to the test data.
+
+```{r}
+#training the workflow on the entire training data
+lin_model_final <- fit(lin_workflow, train_data)
+
+#Making predictions on the Test Data
+test_predictions <- predict(lin_model_final, new_data = test_data)
+
+#combining test_predictions to the test data
+test_data <- test_data %>%
+  bind_cols(test_predictions) 
+
+#Calculating residuals
+test_data <- test_data%>%mutate(residuals= .pred - duration)
+
+# Calculate performance metrics, RMSE and R^2
+test_data %>%
+  metrics(truth = duration, estimate = .pred)
+
+```
+
+As we can see the RMSE metric of the model has a slightly higher value for the test data compared to the training data.
+
+```{r}
+# Observed vs. predicted plot
+ggplot(test_data, aes(x = duration, y = .pred)) +
+  geom_point(alpha = 0.6) +  
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +  # 45-degree line
+  labs(
+    title = "Predicted vs. Observed Values",
+    x = "Observed",
+    y = "Predicted"
+  ) +
+  theme_minimal()
+  
+
+#Residual plot
+ggplot(test_data, aes(x = duration, y = residuals)) +
+  geom_point(alpha = 0.6) +  # Adjust opacity with alpha if needed
+  geom_hline(yintercept = 0, linetype = "dashed", color = "black") +  
+  labs(
+    title = "Residual Plot",
+    x = "Observed",
+    y = "Residuals"
+  ) +
+  theme_minimal()
+ 
+
+
+```
+
+Both the Residual plot and the Predicted vs. Observed plots for the test set showed similar patterns as with the training set suggesting that the model is performing similarly on both sets. This consistency suggests that the model has a stable performance and are likely not overfitting to the training data. However, the presence of a systematic patterns in the residuals suggests that it is unable to capture the complexity of the data.
+
+The analysis aimed to model the duration of eclipses based on the year, by using the data on the 2023 and 2024 eclipses sourced from the Tidy Tuesday GitHub repository. The initial hypothesis was that eclipses in 2023 had a longer duration than those in 2024. This was based on preliminary exploratory data analysis. I compared Linear Regression, Random Forest, and Decision Tree models using cross-validation. Residuals from all models indicated a distinct pattern, suggesting the models did not well capture the data's complexity. Despite this, I chose Linear Regression for its simplicity and interpretability. The chosen model supported the hypothesis that eclipses in 2023 had longer durations than eclipses in 2024. The model performed consistently on both training and test data. However, the model's limitaions were evident in residual patterns.To improve model fit, future analysis could explore non-linear models or incorporate additional variables.
+
+As illustrated in the graph below, the analysis revealed that the eclipses occurring in 2023 generally had longer durations compared to those in 2024.
+
+```{r}
+#Box plot of duration by eclipse year
+ggplot(eclipse_long, aes(x = eclipse_year, y = duration)) + 
+  geom_boxplot() + 
+  labs(title = "", x = "Year", y = "Duration") +
+  theme_minimal()
+```
